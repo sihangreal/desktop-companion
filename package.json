@@ -1,0 +1,16 @@
+{
+  "name": "desktop-companion",
+  "productName": "DesktopCompanion",
+  "version": "0.1.0",
+  "description": "桌面语音女伴（Electron 版）",
+  "main": "electron/main.js",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "devDependencies": {
+    "electron": "^45.3.4"
+  }
+}

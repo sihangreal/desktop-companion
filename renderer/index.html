@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: dcasset:; media-src 'self' dcasset:"
+    />
+    <title>桌面陪伴</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="titlebar" data-drag="true">
+      <span class="name">desktop companion</span>
+      <div class="actions">
+        <button id="btn-hide" class="ghost" title="隐藏到托盘">隐藏</button>
+        <button id="btn-quit" class="ghost" title="退出程序">退出</button>
+      </div>
+    </div>
+
+    <div class="stage" id="stage">
+      <video id="vA" class="bgvid" loop playsinline autoplay></video>
+      <video id="vB" class="bgvid" loop playsinline></video>
+
+      <div class="overlay">
+        <div class="placeholder" id="avatar">按住 Ctrl+Shift+Space 说话</div>
+        <div class="transcript" id="transcript"></div>
+        <div class="reply" id="reply"></div>
+        <div class="status" id="status">待机</div>
+      </div>
+
+      <div class="mode-hint" id="mode-hint">已切到全屏 · 按 Ctrl+Shift+M 返回窗口</div>
+
+      <!-- 全屏模式下只在鼠标移上来时才接管点击 -->
+      <button id="desk-wardrobe" class="desk-trigger hit">衣橱</button>
+
+      <div class="wardrobe hidden hit" id="wardrobe">
+        <div class="wardrobe-head">
+          <div class="tabs" id="wardrobe-tabs"></div>
+          <button id="btn-wardrobe-close" class="ghost">关闭</button>
+        </div>
+        <div class="wardrobe-grid" id="wardrobe-grid"></div>
+        <div class="wardrobe-foot">
+          <div class="foot-row">
+            <button id="page-prev" class="ghost">‹</button>
+            <span id="page-info">1 / 1</span>
+            <button id="page-next" class="ghost">›</button>
+            <span class="foot-sep"></span>
+            <button id="btn-random">交给心动</button>
+          </div>
+          <div class="foot-row">
+            <button id="btn-scope" class="ghost">范围：全部</button>
+            <label class="foot-label">播放</label>
+            <select id="sel-mode">
+              <option value="single">单套循环</option>
+              <option value="random">全部随机</option>
+              <option value="sequence">全部轮播</option>
+              <option value="favorites">全部收藏</option>
+            </select>
+            <label class="foot-label">停留</label>
+            <select id="sel-interval">
+              <option value="15">15 秒</option>
+              <option value="30">30 秒</option>
+              <option value="60">1 分钟</option>
+              <option value="300">5 分钟</option>
+              <option value="600">10 分钟</option>
+              <option value="1800">30 分钟</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="row"><span class="k">版本</span><span class="v" id="v-version">—</span></div>
+      <div class="row"><span class="k">装扮</span><span class="v" id="v-look">—</span></div>
+      <div class="row"><span class="k">API Key</span><span class="v" id="v-apikey">—</span></div>
+      <div class="row">
+        <span class="k">视频音量</span>
+        <input id="vol" type="range" min="0" max="100" step="5" value="70" />
+      </div>
+      <div class="banner hidden" id="banner"></div>
+
+      <div class="keyrow">
+        <input id="in-key" type="password" placeholder="粘贴 sk- 开头的 DeepSeek API Key" />
+        <button id="btn-save-key">保存</button>
+        <button id="btn-clear-key" class="ghost">清除</button>
+      </div>
+
+      <div class="footer">
+        <button id="btn-mic">聆听：开</button>
+        <button id="btn-wardrobe">衣橱</button>
+        <button id="btn-sound" class="ghost">声音：开</button>
+        <button id="btn-fullscreen" class="ghost">全屏</button>
+        <button id="btn-clickthrough" class="ghost">穿透</button>
+      </div>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
