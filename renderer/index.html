@@ -75,6 +75,7 @@
       <div class="row"><span class="k">版本</span><span class="v" id="v-version">—</span></div>
       <div class="row"><span class="k">装扮</span><span class="v" id="v-look">—</span></div>
       <div class="row"><span class="k">API Key</span><span class="v" id="v-apikey">—</span></div>
+      <div class="row"><span class="k">MiMo Key</span><span class="v" id="v-mimokey">—</span></div>
       <div class="row">
         <span class="k">视频音量</span>
         <input id="vol" type="range" min="0" max="100" step="5" value="70" />
@@ -82,9 +83,14 @@
       <div class="banner hidden" id="banner"></div>
 
       <div class="keyrow">
-        <input id="in-key" type="password" placeholder="粘贴 sk- 开头的 DeepSeek API Key" />
+        <input id="in-key" type="password" placeholder="DeepSeek Key（LLM / ASR）" />
         <button id="btn-save-key">保存</button>
         <button id="btn-clear-key" class="ghost">清除</button>
+      </div>
+      <div class="keyrow">
+        <input id="in-key-mimo" type="password" placeholder="MiMo Key（TTS）" />
+        <button id="btn-save-mimo">保存</button>
+        <button id="btn-clear-mimo" class="ghost">清除</button>
       </div>
 
       <div class="footer">

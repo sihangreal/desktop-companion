@@ -5,8 +5,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('companion', {
   getAppInfo: () => ipcRenderer.invoke('app:info'),
-  setApiKey: (key) => ipcRenderer.invoke('secret:set', key),
-  clearApiKey: () => ipcRenderer.invoke('secret:clear'),
+  setApiKey: (key, ref) => ipcRenderer.invoke('secret:set', { ref: ref || 'deepseek', key }),
+  clearApiKey: (ref) => ipcRenderer.invoke('secret:clear', ref || 'deepseek'),
   setClickThrough: (enabled) => ipcRenderer.invoke('window:clickThrough', enabled),
   setInteractive: (on) => ipcRenderer.invoke('window:interactive', on),
   setHitRect: (rect) => ipcRenderer.send('ui:hitrect', rect),

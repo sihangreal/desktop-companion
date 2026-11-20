@@ -7,6 +7,41 @@ const fs = require('node:fs');
 
 const store = require('./store');
 const logger = require('./logger');
+const engine = require('./engine');
+const asrProvider = require('./providers/asr');
+
+// 三路默认配置；用户可在 data/config.json 的 providers 里逐项覆盖
+const DEFAULT_PROVIDERS = {
+  llm: {
+    kind: 'deepseek',
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-chat',
+    keyRef: 'deepseek',
+  },
+  asr: {
+    kind: 'deepseek',
+    baseUrl: 'https://api.deepseek.com',
+    model: '',
+    keyRef: 'deepseek',
+    language: 'zh',
+  },
+  tts: {
+    kind: 'mimo',
+    baseUrl: 'https://api.xiaomimimo.com/v1',
+    model: 'mimo-v2.5-tts',
+    voice: '冰糖',
+    keyRef: 'mimo',
+  },
+};
+
+function providerConfig() {
+  const p = (config && config.providers) || {};
+  return {
+    llm: { ...DEFAULT_PROVIDERS.llm, ...(p.llm || {}) },
+    asr: { ...DEFAULT_PROVIDERS.asr, ...(p.asr || {}) },
+    tts: { ...DEFAULT_PROVIDERS.tts, ...(p.tts || {}) },
+  };
+}
 
 const ROOT = path.join(__dirname, '..');
 const isDev = process.argv.includes('--dev');
@@ -132,43 +167,55 @@ function toggleMode() {
 }
 
 // ------------------------------------------------------------------ 密钥
+// 三路可各用各的 Key：deepseek 沿用旧的 secret.bin，其它 provider 用 secret-<ref>.bin
 
-function secretPath() {
-  return path.join(app.getPath('userData'), 'secret.bin');
+function secretPathFor(ref = 'deepseek') {
+  const dir = app.getPath('userData');
+  return ref === 'deepseek' ? path.join(dir, 'secret.bin') : path.join(dir, `secret-${ref}.bin`);
 }
 
-function setApiKey(key) {
+function setKey(ref, key) {
   if (!safeStorage.isEncryptionAvailable()) {
     throw new Error('系统加密不可用，无法安全保存密钥');
   }
-  fs.mkdirSync(path.dirname(secretPath()), { recursive: true });
-  fs.writeFileSync(secretPath(), safeStorage.encryptString(key));
+  const file = secretPathFor(ref);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, safeStorage.encryptString(key));
 }
 
-function hasApiKey() {
+function hasKey(ref) {
   try {
-    const buf = fs.readFileSync(secretPath());
+    const buf = fs.readFileSync(secretPathFor(ref));
     return safeStorage.decryptString(buf).trim().length > 0;
   } catch {
     return false;
   }
 }
 
-function clearApiKey() {
+function clearKey(ref) {
   try {
-    fs.unlinkSync(secretPath());
+    fs.unlinkSync(secretPathFor(ref));
   } catch {
     /* 本来就没有 */
   }
 }
 
-function getApiKey() {
+function getKey(ref) {
+  // 开发/测试便捷：环境变量优先（MIMO_KEY / DEEPSEEK_KEY）
+  const envName = `${String(ref).toUpperCase()}_KEY`;
+  if (process.env[envName]) return process.env[envName];
   try {
-    return safeStorage.decryptString(fs.readFileSync(secretPath()));
+    return safeStorage.decryptString(fs.readFileSync(secretPathFor(ref)));
   } catch {
     return null;
   }
 }
+
+// 兼容旧调用
+const setApiKey = (key) => setKey('deepseek', key);
+const hasApiKey = () => hasKey('deepseek');
+const clearApiKey = () => clearKey('deepseek');
+const getApiKey = () => getKey('deepseek');
 
 /// 把 16-bit 单声道 PCM 包成 WAV 头。
 function pcmToWav(pcm, sampleRate) {
@@ -304,6 +351,9 @@ ipcMain.handle('app:info', () => ({
   logDir: path.dirname(logger.logFile || ''),
   dataDir: app.getPath('userData'),
   hasApiKey: hasApiKey(),
+  hasKeys: { deepseek: hasKey('deepseek'), mimo: hasKey('mimo') },
+  engine: config.engine || 'v2',
+  providers: providerConfig(),
   clickThrough: !!config.clickThrough,
   mode: config.mode || 'window',
   playMode: config.playMode || 'single',
@@ -352,20 +402,25 @@ ipcMain.handle('mode:toggle', () => {
   return config.mode;
 });
 
-ipcMain.handle('secret:set', (_e, key) => {
-  const v = String(key || '').trim();
+ipcMain.handle('secret:set', (_e, payload) => {
+  // 兼容旧调用：secret:set('sk-...')；新调用：secret:set({ ref, key })
+  const ref = typeof payload === 'object' && payload ? payload.ref || 'deepseek' : 'deepseek';
+  const raw = typeof payload === 'object' && payload ? payload.key : payload;
+  const v = String(raw || '').trim();
+
   if (v.length < 8) throw new Error('Key 长度不足，请检查是否复制完整');
   if (!/^sk-[A-Za-z0-9_-]{16,}$/.test(v)) {
-    throw new Error('这看起来不是 API Key：应以 sk- 开头；请从 platform.deepseek.com 复制，不要粘贴命令或路径');
+    throw new Error('这看起来不是 API Key：应以 sk- 开头，不要粘贴命令或路径');
   }
-  setApiKey(v);
-  logger.log('API Key 已加密保存');
+
+  setKey(ref, v);
+  logger.log(`API Key(${ref}) 已加密保存`);
   return true;
 });
 
-ipcMain.handle('secret:clear', () => {
-  clearApiKey();
-  logger.log('API Key 已清除');
+ipcMain.handle('secret:clear', (_e, ref) => {
+  clearKey(typeof ref === 'string' && ref ? ref : 'deepseek');
+  logger.log(`API Key(${ref || 'deepseek'}) 已清除`);
   return true;
 });
 
@@ -438,39 +493,42 @@ ipcMain.handle('window:hide', () => {
   return true;
 });
 
-// ASR：接收渲染进程录好的 16k 单声道 PCM，封装 WAV 后整段提交。
+// ASR：接收渲染进程录好的 16k 单声道 PCM，按配置的 provider 提交。
 ipcMain.handle('asr:transcribe', async (_e, pcmArray) => {
-  const key = getApiKey();
-  if (!key) throw new Error('未配置 API Key');
+  const prov = providerConfig().asr;
+  const key = getKey(prov.keyRef || 'deepseek');
+  if (!key) throw new Error(`未配置 ${prov.keyRef || 'deepseek'} 的 API Key`);
 
   const pcm = Buffer.from(pcmArray);
   if (pcm.length < 3200) throw new Error('录音太短（不足 100ms）');
   if (pcm.length > 16 * 1024 * 1024) throw new Error('录音过长，超过 8MB 上限');
 
-  const wav = pcmToWav(pcm, 16000);
-  const form = new FormData();
-  form.append('file', new Blob([wav], { type: 'audio/wav' }), 'speech.wav');
-
   const t0 = Date.now();
-  const res = await fetch('https://api.deepseek.com/v1/tools/asr', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}` },
-    body: form,
-  });
-  const ms = Date.now() - t0;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
 
-  if (!res.ok) {
-    const body = (await res.text()).slice(0, 200);
-    logger.error(`ASR 失败 HTTP ${res.status}: ${body}`);
-    if (res.status === 401) throw new Error('Key 无效或已失效（401）');
-    if (res.status === 429) throw new Error('请求过于频繁（429），稍后再试');
-    if (res.status === 400) throw new Error(`音频格式被拒绝（400）：${body}`);
-    throw new Error(`识别失败 HTTP ${res.status}`);
+  try {
+    const { text, durationMs } = await asr.transcribe({
+      kind: prov.kind,
+      baseUrl: prov.baseUrl,
+      apiKey: key,
+      model: prov.model,
+      language: prov.language,
+      pcm,
+      signal: ctrl.signal,
+    });
+    const ms = Date.now() - t0;
+    logger.log(`ASR(${prov.kind}) 完成 ${ms}ms 音频 ${durationMs}ms 文本长度 ${text.length}`);
+    return { text, ms, durationMs };
+  } catch (e) {
+    logger.error(`ASR(${prov.kind}) 失败: ${e.message}`);
+    if (e.status === 401) throw new Error('Key 无效或已失效（401）');
+    if (e.status === 402) throw new Error('账户余额不足（402）');
+    if (e.status === 429) throw new Error('请求过于频繁（429），稍后再试');
+    throw new Error(`识别失败：${e.message}`);
+  } finally {
+    clearTimeout(timer);
   }
-
-  const j = await res.json();
-  logger.log(`ASR 完成 ${ms}ms 音频 ${j.duration_ms}ms 文本长度 ${(j.text || '').length}`);
-  return { text: (j.text || '').trim(), ms, durationMs: j.duration_ms || 0 };
 });
 
 ipcMain.handle('app:quit', () => {
@@ -680,7 +738,66 @@ function speakable(s) {
     .trim();
 }
 
+// ---------------------------------------------------------------- 引擎 v2
+
+let currentTurnAbort = null;
+
+async function chatTurnV2(userText) {
+  const send = (type, payload) => {
+    if (win && !win.isDestroyed()) win.webContents.send('reply:event', { type, ...payload });
+  };
+
+  const prov = providerConfig();
+  const keys = {
+    llm: getKey(prov.llm.keyRef || 'deepseek'),
+    tts: getKey(prov.tts.keyRef || 'mimo'),
+  };
+
+  logger.log(
+    `v2 回合开始 llm=${prov.llm.kind}/${prov.llm.model}(key=${keys.llm ? '有' : '无'}) tts=${prov.tts.kind}/${prov.tts.model}/${prov.tts.voice}(key=${keys.tts ? '有' : '无'})`
+  );
+
+  const ctrl = new AbortController();
+  currentTurnAbort = ctrl;
+  const before = history.slice();
+
+  try {
+    if (!keys.llm) throw new Error('未配置 LLM 的 API Key');
+    if (!keys.tts) throw new Error('未配置 TTS 的 API Key（MiMo）');
+
+    const r = await engine.runTurn({
+      userText,
+      providers: prov,
+      keys,
+      persona: PERSONA,
+      history: before,
+      send,
+      signal: ctrl.signal,
+      emotionStyle: config.emotionStyle !== false,
+      maxConcurrent: Math.max(1, config.maxConcurrentTts || 2),
+    });
+
+    history.push({ role: 'user', content: userText });
+    history.push({ role: 'assistant', content: r.speakText || '……' });
+    while (history.length > MAX_HISTORY_TURNS * 2) history.shift();
+
+    logger.log(
+      `对话完成(v2) 首token ${r.timings.firstTokenMs}ms 首声 ${r.timings.firstAudioMs}ms 总 ${r.timings.totalMs}ms 情绪 ${r.emotion} 字数 ${r.speakText.length}`
+    );
+    send('done', { emotion: r.emotion, totalMs: r.timings.totalMs, text: r.text });
+    return { ...r.timings, emotion: r.emotion, text: r.text };
+  } catch (e) {
+    logger.error(`对话失败(v2): ${e.message}`);
+    send('error', { message: e.message });
+    throw e;
+  } finally {
+    currentTurnAbort = null;
+  }
+}
+
 ipcMain.handle('chat:turn', async (_e, userText) => {
+  if ((config.engine || 'v2') === 'v2') return chatTurnV2(userText);
+
   const key = getApiKey();
   if (!key) throw new Error('未配置 API Key');
 

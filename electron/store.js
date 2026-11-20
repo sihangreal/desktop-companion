@@ -18,6 +18,11 @@ const DEFAULTS = {
   // all | favorites —— 影响「交给心动」与「全部随机」
   rotateScope: 'all',
   favorites: [],
+  // v2：对话引擎与三路供应商（providers 为空时用 main.js 里的默认值）
+  engine: 'v2',
+  emotionStyle: true,
+  maxConcurrentTts: 2,
+  providers: null,
   firstRun: true,
 };
 

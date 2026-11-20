@@ -38,6 +38,9 @@ async function refresh() {
     const info = await window.companion.getAppInfo();
     setText('v-version', info.version, 'ok');
     setText('v-apikey', info.hasApiKey ? '已保存（加密）' : '未设置', info.hasApiKey ? 'ok' : 'bad');
+    if (info.hasKeys) {
+      setText('v-mimokey', info.hasKeys.mimo ? '已保存（加密）' : '未设置', info.hasKeys.mimo ? 'ok' : 'bad');
+    }
     clickThrough = info.clickThrough;
     const btn = $('btn-clickthrough');
     if (btn) btn.textContent = `穿透：${clickThrough ? '开' : '关'}`;
@@ -81,7 +84,30 @@ $('btn-save-key').onclick = async () => {
 
 $('btn-clear-key').onclick = async () => {
   try {
-    await window.companion.clearApiKey();
+    await window.companion.clearApiKey('deepseek');
+    await refresh();
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+$('btn-save-mimo').onclick = async () => {
+  const input = $('in-key-mimo');
+  const key = input.value.trim();
+  if (!key) return;
+  try {
+    await window.companion.setApiKey(key, 'mimo');
+    input.value = '';
+    await refresh();
+    setStatus('MiMo Key 已保存');
+  } catch (err) {
+    setText('v-mimokey', String(err && err.message ? err.message : err), 'bad');
+  }
+};
+
+$('btn-clear-mimo').onclick = async () => {
+  try {
+    await window.companion.clearApiKey('mimo');
     await refresh();
   } catch (err) {
     console.error(err);
@@ -156,6 +182,49 @@ function applyVideoVolume(duck = false) {
   }
   const btn = $('btn-sound');
   if (btn) btn.textContent = `声音：${soundOn ? '开' : '关'}`;
+}
+
+// 音频按句到达，可能乱序；用 seq 缓冲，保证播放顺序
+let playSeq = 0;
+let audioBuffers = new Map();
+let endedSeq = new Set();
+
+function resetAudioOrder() {
+  playSeq = 0;
+  audioBuffers = new Map();
+  endedSeq = new Set();
+}
+
+function pushAudio(seq, pcm) {
+  if (typeof seq !== 'number') {
+    enqueuePcm(pcm); // 老引擎没有 seq
+    return;
+  }
+  if (seq === playSeq) {
+    enqueuePcm(pcm);
+  } else {
+    if (!audioBuffers.has(seq)) audioBuffers.set(seq, []);
+    audioBuffers.get(seq).push(pcm);
+  }
+}
+
+function advanceAudio() {
+  while (endedSeq.has(playSeq)) {
+    playSeq += 1;
+    const buf = audioBuffers.get(playSeq);
+    if (buf && buf.length) {
+      audioBuffers.delete(playSeq);
+      for (const c of buf) enqueuePcm(c);
+    } else {
+      break; // 下一句还没到，等它
+    }
+  }
+}
+
+function endAudioSeq(seq) {
+  if (typeof seq !== 'number') return;
+  endedSeq.add(seq);
+  advanceAudio();
 }
 
 function enqueuePcm(u8) {
@@ -458,7 +527,11 @@ window.companion.onReplyEvent((ev) => {
   if (!ev) return;
   switch (ev.type) {
     case 'first-token':
+      resetAudioOrder();
       setStatus(`她开始回复 · 首字 ${ev.ms}ms`);
+      break;
+    case 'tts.first':
+      setStatus(`首声 ${ev.ms}ms`);
       break;
     case 'emotion':
       if ($('stage')) $('stage').dataset.emotion = ev.emotion;
@@ -469,10 +542,13 @@ window.companion.onReplyEvent((ev) => {
       break;
     case 'audio':
       try {
-        enqueuePcm(ev.pcm);
+        pushAudio(ev.seq, ev.pcm);
       } catch (e) {
         console.error('播放失败', e);
       }
+      break;
+    case 'audio-end':
+      endAudioSeq(ev.seq);
       break;
     case 'warn':
       console.warn('TTS 警告:', ev.message);
