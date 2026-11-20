@@ -508,7 +508,7 @@ ipcMain.handle('asr:transcribe', async (_e, pcmArray) => {
   const timer = setTimeout(() => ctrl.abort(), 30000);
 
   try {
-    const { text, durationMs } = await asr.transcribe({
+    const { text, durationMs } = await asrProvider.transcribe({
       kind: prov.kind,
       baseUrl: prov.baseUrl,
       apiKey: key,
