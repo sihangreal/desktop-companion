@@ -205,16 +205,18 @@ POST {baseUrl}/chat/completions
 
 ## 6. 延迟预算（MiMo 流式）
 
-| 段 | v1 实测 | v2 目标 |
-|---|---|---|
-| VAD 判停 | 700ms | 700ms |
-| ASR | 600ms | 600ms（MiMo 同类） |
-| LLM 首 token | 400–800ms | 400–800ms |
-| 首句成型 | +300ms | +200ms（首句压到 12 字内） |
-| TTS 首包 | 1100ms（整句） | **300–500ms（流式）** |
-| **首声合计** | **≈3.1–4.0s** | **≈2.0–2.8s** |
+| 段 | v1 实测 | v2 目标 | v2 实测（2026-11-20） |
+|---|---|---|---|
+| VAD 判停 | 700ms | 700ms | — |
+| ASR | 600ms | 600ms | 未测（账户 402，见 §12） |
+| LLM 首 token | 400–800ms | 400–800ms | 沿用 v1 |
+| 首句成型 | +300ms | +200ms | 待测 |
+| TTS 首包 | 1100ms（整句） | 300–500ms | **660 / 1034 / 658ms（三次）** |
+| **首声合计** | **≈3.1–4.0s** | **≈2.0–2.8s** | 预计 2.4–3.2s |
 
-进一步优化（P1）：首句 8 字以内 + LLM 首句优先输出，可再省 200–300ms。
+**修正**：TTS 首包实测 660–1030ms，高于最初估计的 300–500ms。流式的收益来自「不用等整句合成完」，而不是首包更快。**首声预算按 2.4–3.2s 重估**。
+
+进一步优化（P1）：首句压到 8 字以内、LLM 优先输出短句，可再省 200–300ms。
 
 ---
 
@@ -282,3 +284,61 @@ POST {baseUrl}/chat/completions
 | Q-2 | 是否要「声音克隆」作为 P2 | 暂不做 |
 | Q-3 | MiMo 文本模型是否作为 LLM 备选 | 预留适配器，暂不启用 |
 | Q-4 | 三路是否共用一个 Key | 默认共用，支持分开 |
+
+---
+
+## 12. 接口实测记录（2026-11-20）
+
+用真实 Key 跑通的结果，作为实现依据。
+
+### TTS 流式
+
+```
+POST https://api.xiaomimimo.com/v1/chat/completions
+{ "model":"mimo-v2.5-tts",
+  "messages":[{"role":"assistant","content":"(轻快)今天过得怎么样呀？"}],
+  "audio":{"voice":"冰糖","format":"pcm16"}, "stream":true }
+
+→ HTTP 200  text/event-stream
+→ 首个 chunk: choices[0].delta.audio = null（只有 role）
+→ 音频块:     choices[0].delta.audio.data = base64(PCM16LE 24k mono)
+→ 5 个块 / 76800 字节 ≈ 1.6s
+```
+
+**关键点**：首个 SSE 分片的 `audio` 是 `null`，必须先判空再取 `data`，否则会崩。
+
+### 首包延迟（3 次，同一句）
+
+| 次 | 首包 | 音频时长 | RMS |
+|---|---|---|---|
+| 1 | 672ms | 2.40s | 0.098 |
+| 2 | 1034ms | 1.92s | 0.168 |
+| 3 | 658ms | 2.88s | 0.113 |
+
+RMS 0.1–0.17，确认是真人声而非静音。
+
+### TTS 非流式
+
+```
+"stream": false, "audio":{"format":"wav"}
+→ HTTP 200, 1082ms, 99884 字节 wav（choices[0].message.audio.data）
+```
+
+### ASR
+
+```
+POST 同一端点, model=mimo-v2.5-asr
+messages[0].content = [{type:'input_audio', input_audio:{data:'data:audio/wav;base64,...'}}]
+asr_options = {language:'zh'}
+
+→ HTTP 402 {"code":"402","message":"Insufficient account balance","type":"insufficient_balance"}
+```
+
+**阻塞项**：账户余额不足以调用 ASR。在充值或确认额度之前，ASR 继续用 DeepSeek，TTS 用 MiMo。
+
+### 实现要求（由实测得出）
+
+1. SSE 解析必须容忍 `delta.audio === null`（首片）。
+2. 音频块大小不固定，播放器要按到达顺序直接入队，不能假设定长。
+3. TTS 首个音频块约 0.7–1.0 秒，**首句必须短**（≤12 字）才能把首声压进 3 秒。
+4. 流式期间若用户打断，直接 `AbortController.abort()` 断开连接，已收到的块丢弃。
