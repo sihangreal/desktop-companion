@@ -1,8 +1,13 @@
 # 对话引擎 v2 · 架构图（Mermaid）
 
-> 全部为文本定义，可直接粘到任何支持 Mermaid 的编辑器里渲染。
+> 全部为文本定义。VS Code 预览需要装 **Markdown Preview Mermaid Support** 扩展（`bierner.markdown-mermaid`）才能渲染代码块；
+> 若不想装扩展，下面每节都附了**已渲染的 PNG**，可直接查看。
+>
+> 重新生成图片：见 `scripts/mermaid-render/README.md`。
 
 ## 1. 数据流
+
+![数据流](assets/v2-flow.png)
 
 ```mermaid
 flowchart LR
@@ -42,6 +47,8 @@ flowchart LR
 
 ## 2. 单轮时序（含实测耗时）
 
+![时序图](assets/v2-sequence.png)
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -72,6 +79,8 @@ sequenceDiagram
 ```
 
 ## 3. UML 类图
+
+![UML 类图](assets/v2-class.png)
 
 ```mermaid
 classDiagram
@@ -223,6 +232,8 @@ classDiagram
 
 ## 4. 回合状态机
 
+![状态机](assets/v2-state.png)
+
 ```mermaid
 stateDiagram-v2
     [*] --> 待机
@@ -249,6 +260,8 @@ stateDiagram-v2
 ```
 
 ## 5. 现状标注
+
+![问题分析](assets/v2-issues.png)
 
 ```mermaid
 flowchart TD
