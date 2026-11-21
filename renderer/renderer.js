@@ -241,6 +241,11 @@ function enqueuePcm(u8) {
   src.connect(ctx.destination);
 
   const startAt = Math.max(ctx.currentTime, nextPlayAt);
+  const gapMs = Math.round((startAt - ctx.currentTime) * 1000);
+  if (gapMs > 250) {
+    // 播放队列断档，说明合成跟不上播放（或顺序缓冲卡住）
+    window.companion.uiLog(`playback gap ${gapMs}ms (playing=${playingCount})`);
+  }
   src.start(startAt);
   nextPlayAt = startAt + buf.duration;
 

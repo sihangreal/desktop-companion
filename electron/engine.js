@@ -90,6 +90,9 @@ async function runTurn(opts) {
     const ctrl = new AbortController();
     const onAbort = () => ctrl.abort();
     if (signal) signal.addEventListener('abort', onAbort, { once: true });
+    const tStart = Date.now();
+    let firstChunkMs = 0;
+    let bytes = 0;
     try {
       const it = tts.synth({
         kind: providers.tts.kind,
@@ -103,13 +106,24 @@ async function runTurn(opts) {
       });
       for await (const buf of it) {
         if (signal && signal.aborted) break;
-        if (!firstAudioMs) {
-          firstAudioMs = Date.now() - t0;
-          send('tts.first', { ms: firstAudioMs });
+        if (!firstChunkMs) {
+          firstChunkMs = Date.now() - tStart;
+          if (!firstAudioMs) {
+            firstAudioMs = Date.now() - t0;
+            send('tts.first', { ms: firstAudioMs });
+          }
         }
+        bytes += buf.length;
         send('audio', { seq: seqNo, pcm: buf });
       }
       send('audio-end', { seq: seqNo });
+      send('tts.stat', {
+        seq: seqNo,
+        len: sentence.length,
+        firstMs: firstChunkMs,
+        totalMs: Date.now() - tStart,
+        ms: Math.round(bytes / 48),
+      });
     } catch (e) {
       if (!(signal && signal.aborted)) {
         send('warn', { message: `TTS: ${e.message}` });
