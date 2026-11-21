@@ -199,4 +199,34 @@ module.exports = [
     D["症状：嘴和声音不同步"] --> D1["按到达时间切 speaking 非出声时间"]
     D --> D2["两句间隔超 900ms 会来回闪"]`,
   },
+  {
+    name: 'v2-context',
+    zoom: 1,
+    code: `flowchart TB
+    subgraph L1["会话层 SessionStore"]
+        REC["turn 记录<br/>sessions/YYYY-MM-DD.jsonl"]
+        LOAD["启动时加载最近会话"]
+    end
+    subgraph L2["记忆层 Memory"]
+        RECENT["近期窗口<br/>最近 12 轮原文"]
+        SUM["滚动摘要<br/>更早历史压缩"]
+        FACTS["长期事实<br/>称呼 / 偏好 / 雷区"]
+    end
+    subgraph L3["Prompt 构建 PromptBuilder"]
+        SYS["system 四段<br/>身份 / 记忆 / 摘要 / 约束"]
+        MSG["messages 组装<br/>+ token 预算裁剪"]
+    end
+    ENG["DialogueEngine.runTurn()"]
+    AD["LlmAdapter → DeepSeek"]
+    LOAD --> RECENT
+    REC --> SUM
+    REC --> FACTS
+    RECENT --> MSG
+    SUM --> SYS
+    FACTS --> SYS
+    SYS --> ENG
+    MSG --> ENG
+    ENG --> AD
+    ENG -->|本轮记录| REC`,
+  },
 ];
