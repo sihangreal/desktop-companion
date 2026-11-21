@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html, body { margin: 0; background: #121216; }
+      #out { display: inline-block; padding: 12px; }
+    </style>
+    <script src="./node_modules/mermaid/dist/mermaid.min.js"></script>
+  </head>
+  <body>
+    <div id="out"></div>
+    <script>
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: 'dark',
+        securityLevel: 'loose',
+        fontFamily: '"Microsoft YaHei", "Segoe UI", sans-serif',
+        // htmlLabels 用 foreignObject，栅格化时会丢；关掉后走纯 SVG text
+        flowchart: { htmlLabels: false, curve: 'basis', padding: 14, useMaxWidth: false },
+        sequence: { actorMargin: 60, messageMargin: 34, mirrorActors: false, useMaxWidth: false },
+        class: { useMaxWidth: false },
+        state: { useMaxWidth: false },
+        themeVariables: {
+          background: '#121216',
+          primaryColor: '#22222a',
+          primaryTextColor: '#e9e6e1',
+          primaryBorderColor: '#6b6863',
+          lineColor: '#8a857c',
+          secondaryColor: '#1c1c22',
+          tertiaryColor: '#161619',
+          fontSize: '15px',
+          noteBkgColor: '#26262e',
+          noteTextColor: '#e9e6e1',
+          noteBorderColor: '#6b6863',
+          actorBkg: '#22222a',
+          actorBorder: '#8a857c',
+          actorTextColor: '#e9e6e1',
+          signalColor: '#8a857c',
+          signalTextColor: '#e9e6e1',
+          classText: '#e9e6e1',
+        },
+      });
+
+      window.renderToPng = async (code, scale) => {
+        const out = document.getElementById('out');
+        out.innerHTML = '';
+        const id = 'g' + Math.random().toString(36).slice(2);
+        const { svg } = await mermaid.render(id, code);
+        out.innerHTML = svg;
+
+        const el = out.querySelector('svg');
+        const vb = el.viewBox && el.viewBox.baseVal;
+        const w = Math.max(1, Math.round(vb && vb.width ? vb.width : 800));
+        const h = Math.max(1, Math.round(vb && vb.height ? vb.height : 600));
+
+        el.setAttribute('width', w);
+        el.setAttribute('height', h);
+        el.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+
+        const s = scale || 2;
+        const str = new XMLSerializer().serializeToString(el);
+        const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(str);
+
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(w * s);
+        canvas.height = Math.round(h * s);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#121216';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        return { w, h, png: canvas.toDataURL('image/png') };
+      };
+    </script>
+  </body>
+</html>
