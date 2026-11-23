@@ -1116,6 +1116,54 @@ app.whenReady().then(() => {
   const modeKey = globalShortcut.register('Control+Shift+M', toggleMode);
   logger.log(`热键 Ctrl+Shift+M 注册${modeKey ? '成功' : '失败'}`);
 
+  // 自动化冒烟：DC_UI_TEST=chatN 跑多轮对话，用于验收上下文与记忆
+  if (process.env.DC_UI_TEST === 'chatN') {
+    const script = [
+      '我叫阿哲，记住我的名字',
+      '我最近在准备面试，有点紧张',
+      '我不喜欢被叫宝贝',
+      '今天天气还行',
+      '中午吃了个三明治',
+      '下午要开会',
+      '会开得有点久',
+      '晚上想早点睡',
+      '你有什么推荐的吗',
+      '随便聊聊吧',
+      '最近睡得不太好',
+      '工作压力有点大',
+      '周末想去走走',
+      '不知道去哪',
+      '你觉得呢',
+      '再聊两句',
+      '有点困了',
+      '差不多了',
+      '还有最后一件事',
+      '你还记得我叫什么吗',
+    ];
+    setTimeout(async () => {
+      try {
+        const texts = JSON.stringify(script);
+        const r = await win.webContents.executeJavaScript(`(async () => {
+          const list = ${texts};
+          let ok = 0, fail = 0;
+          for (const t of list) {
+            try {
+              await window.companion.sendChat(t);
+              ok += 1;
+            } catch (e) {
+              fail += 1;
+            }
+            await new Promise((res) => setTimeout(res, 600));
+          }
+          return ok + '/' + list.length + ' (fail=' + fail + ')';
+        })()`);
+        logger.log(`[test] 多轮对话完成 ${r}`);
+      } catch (e) {
+        logger.error(`[test] 多轮对话失败: ${e.message}`);
+      }
+    }, 5000);
+  }
+
   // 自动化冒烟：DC_UI_TEST=chat 触发一轮对话，观察空闲/说话视频是否切换
   if (process.env.DC_UI_TEST === 'chat') {
     setTimeout(async () => {
