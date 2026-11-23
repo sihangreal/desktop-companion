@@ -1146,6 +1146,47 @@ app.whenReady().then(() => {
   const modeKey = globalShortcut.register('Control+Shift+M', toggleMode);
   logger.log(`热键 Ctrl+Shift+M 注册${modeKey ? '成功' : '失败'}`);
 
+  // 自动化冒烟：DC_UI_TEST=del 点开衣橱并点击第一张封面的删除按钮，检查弹层是否可见
+  if (process.env.DC_UI_TEST === 'del') {
+    setTimeout(async () => {
+      try {
+        const r = await win.webContents.executeJavaScript(`(async () => {
+          const openBtn = document.getElementById('desk-wardrobe') || document.getElementById('btn-wardrobe');
+          openBtn && openBtn.click();
+          await new Promise((r) => setTimeout(r, 700));
+          const del = document.querySelector('.wardrobe-item .del');
+          if (!del) return JSON.stringify({ ok: false, reason: 'no-del-button', wardrobe: document.getElementById('wardrobe')?.className });
+          del.click();
+          await new Promise((r) => setTimeout(r, 400));
+          const dlg = document.getElementById('del-dialog');
+          if (!dlg) return JSON.stringify({ ok: false, reason: 'no-dialog-element' });
+          const cs = getComputedStyle(dlg);
+          let after = null;
+          if ('${process.env.DC_DEL_ACTION || ''}') {
+            document.getElementById('del-ref').click();
+            await new Promise((r) => setTimeout(r, 900));
+            const info = await window.companion.listLooks();
+            after = { count: info.count, currentId: info.currentId };
+          }
+          return JSON.stringify({
+            ok: true,
+            hasHidden: dlg.classList.contains('hidden'),
+            display: cs.display,
+            visibility: cs.visibility,
+            zIndex: cs.zIndex,
+            rect: dlg.getBoundingClientRect().width + 'x' + dlg.getBoundingClientRect().height,
+            panelDisplay: getComputedStyle(document.querySelector('.panel')).display,
+            bodyClass: document.body.className,
+            after,
+          });
+        })()`);
+        logger.log(`[test] 删除弹层: ${r}`);
+      } catch (e) {
+        logger.error(`[test] 删除弹层失败: ${e.message}`);
+      }
+    }, 4000);
+  }
+
   // 自动化冒烟：DC_UI_TEST=chatN 跑多轮对话，用于验收上下文与记忆
   if (process.env.DC_UI_TEST === 'chatN') {
     const script = [

@@ -132,24 +132,25 @@
         </div>
       </details>
 
-      <div class="del-dialog hidden" id="del-dialog">
-        <div class="del-box">
-          <div class="del-title" id="del-title">移除这套装扮？</div>
-          <div class="del-desc" id="del-desc"></div>
-          <div class="del-actions">
-            <button id="del-ref" class="ghost">仅从列表移除</button>
-            <button id="del-file">连文件一起删除</button>
-            <button id="del-cancel" class="ghost">取消</button>
-          </div>
-        </div>
-      </div>
-
       <div class="footer">
         <button id="btn-mic">聆听：开</button>
         <button id="btn-wardrobe">衣橱</button>
         <button id="btn-sound" class="ghost">声音：开</button>
         <button id="btn-fullscreen" class="ghost">全屏</button>
         <button id="btn-clickthrough" class="ghost">穿透</button>
+      </div>
+    </div>
+
+    <!-- 删除确认弹层放在面板外，全屏模式下面板是隐藏的 -->
+    <div class="del-dialog hidden" id="del-dialog">
+      <div class="del-box">
+        <div class="del-title" id="del-title">移除这套装扮？</div>
+        <div class="del-desc" id="del-desc"></div>
+        <div class="del-actions">
+          <button id="del-ref" class="ghost">仅从列表移除</button>
+          <button id="del-file">连文件一起删除</button>
+          <button id="del-cancel" class="ghost">取消</button>
+        </div>
       </div>
     </div>
 

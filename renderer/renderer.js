@@ -1137,7 +1137,66 @@ setInterval(() => {
   }
 }, 10000);
 
-function toggleFavorite(id) {  if (favorites.has(id)) favorites.delete(id);
+// ---------------------------------------------------------------- 移除装扮
+
+let pendingRemove = null;
+
+function askRemoveLook(look) {
+  pendingRemove = look;
+  const title = $('del-title');
+  const desc = $('del-desc');
+  if (title) title.textContent = `移除「${look.name}」？`;
+  if (desc) {
+    desc.innerHTML =
+      '<b>仅从列表移除</b>：文件保留，以后还能重新导入。<br/>' +
+      '<b>连文件一起删除</b>：会删除视频与封面，<b>不可恢复</b>；' +
+      '若素材来自 Steam 创意工坊，原壁纸里的这套也会消失。';
+  }
+  const dlg = $('del-dialog');
+  if (dlg) dlg.classList.remove('hidden');
+  window.companion.uiLog('askRemoveLook ' + look.id + ' dialog=' + (dlg ? 'ok' : 'missing') + ' class=' + (dlg ? dlg.className : '-'));
+}
+
+async function doRemoveLook(deleteFiles) {
+  window.companion.uiLog('doRemoveLook files=' + deleteFiles);
+  const look = pendingRemove;
+  pendingRemove = null;
+  const dlg = $('del-dialog');
+  if (dlg) dlg.classList.add('hidden');
+  if (!look) return;
+
+  try {
+    const r = await window.companion.removeLook(look.id, deleteFiles);
+    window.companion.uiLog(
+      `remove look ${look.id} files=${deleteFiles} deleted=${r.deleted.length} skipped=${r.skipped.length} remaining=${r.remaining}`
+    );
+
+    favorites.delete(look.id);
+    if (looksData) {
+      looksData.looks = looksData.looks.filter((l) => l.id !== look.id);
+      looksData.count = looksData.looks.length;
+    }
+
+    if (currentLookId === look.id && looksData && looksData.looks.length) {
+      const first = looksData.looks[0];
+      applyLook(first.id, true);
+      window.companion.setLook(first.id).catch(() => {});
+    }
+
+    renderTabs();
+    renderPage();
+    setStatus(
+      deleteFiles
+        ? `已移除「${look.name}」，删除 ${r.deleted.length} 个文件`
+        : `已移除「${look.name}」（文件保留）`
+    );
+  } catch (e) {
+    setStatus('移除失败：' + (e && e.message ? e.message : e));
+  }
+}
+
+function toggleFavorite(id) {
+  if (favorites.has(id)) favorites.delete(id);
   else favorites.add(id);
   saveSettings({ favorites: [...favorites] });
   window.companion.uiLog(`favorite ${id} -> ${favorites.has(id)} total=${favorites.size}`);
