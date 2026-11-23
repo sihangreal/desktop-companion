@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const store = require('./store');
 const logger = require('./logger');
 const engine = require('./engine');
+const { SessionStore, dateKey } = require('./session');
 const asrProvider = require('./providers/asr');
 
 // 三路默认配置；用户可在 data/config.json 的 providers 里逐项覆盖
@@ -741,6 +742,7 @@ function speakable(s) {
 // ---------------------------------------------------------------- 引擎 v2
 
 let currentTurnAbort = null;
+let sessionStore = null;
 
 async function chatTurnV2(userText) {
   const send = (type, payload) => {
@@ -759,7 +761,11 @@ async function chatTurnV2(userText) {
 
   const ctrl = new AbortController();
   currentTurnAbort = ctrl;
-  const before = history.slice();
+
+  // 上下文来自会话记录；记录不可用时退回内存窗口
+  const before = sessionStore ? sessionStore.recent(MAX_HISTORY_TURNS) : history.slice();
+  const turnId = sessionStore ? sessionStore.reserveTurnId() : null;
+  if (sessionStore) sessionStore.append({ turnId, role: 'user', text: userText });
 
   try {
     if (!keys.llm) throw new Error('未配置 LLM 的 API Key');
@@ -777,9 +783,22 @@ async function chatTurnV2(userText) {
       maxConcurrent: Math.max(1, config.maxConcurrentTts || 2),
     });
 
-    history.push({ role: 'user', content: userText });
-    history.push({ role: 'assistant', content: r.speakText || '……' });
-    while (history.length > MAX_HISTORY_TURNS * 2) history.shift();
+    if (sessionStore) {
+      sessionStore.append({
+        turnId,
+        role: 'assistant',
+        text: r.speakText || '……',
+        emotion: r.emotion,
+        firstTokenMs: r.timings.firstTokenMs,
+        firstAudioMs: r.timings.firstAudioMs,
+        audioMs: r.timings.audioMs,
+        provider: { llm: prov.llm.model, tts: prov.tts.model },
+      });
+    } else {
+      history.push({ role: 'user', content: userText });
+      history.push({ role: 'assistant', content: r.speakText || '……' });
+      while (history.length > MAX_HISTORY_TURNS * 2) history.shift();
+    }
 
     logger.log(
       `对话完成(v2) 首token ${r.timings.firstTokenMs}ms 首声 ${r.timings.firstAudioMs}ms 总 ${r.timings.totalMs}ms 情绪 ${r.emotion} 字数 ${r.speakText.length}`
@@ -917,6 +936,22 @@ app.whenReady().then(() => {
   config = store.load(configPath);
   logger.log(`启动 v${app.getVersion()}  data=${userData}`);
   console.log(`[boot] v${app.getVersion()} data=${userData}`);
+
+  // 会话记录：启动时清理过期文件，并载入当天上下文
+  try {
+    sessionStore = new SessionStore({
+      dir: path.join(userData, 'sessions'),
+      log: (m) => logger.log(`[session] ${m}`),
+    });
+    const { removed } = sessionStore.cleanup(7);
+    const { loaded, bad } = sessionStore.open(dateKey());
+    logger.log(
+      `会话就绪 ${sessionStore.date} 载入 ${loaded} 条${bad ? `（跳过 ${bad} 条坏行）` : ''}，清理 ${removed} 个过期文件`
+    );
+  } catch (e) {
+    sessionStore = null;
+    logger.error(`会话初始化失败，降级为无记录模式: ${e.message}`);
+  }
 
   registerAssetProtocol();
   createWindow();

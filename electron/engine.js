@@ -60,6 +60,7 @@ async function runTurn(opts) {
   const t0 = Date.now();
   let firstTokenMs = 0;
   let firstAudioMs = 0;
+  let audioBytes = 0;
   let emotion = 'neutral';
   let full = '';
   let pending = '';
@@ -114,6 +115,7 @@ async function runTurn(opts) {
           }
         }
         bytes += buf.length;
+        audioBytes += buf.length;
         send('audio', { seq: seqNo, pcm: buf });
       }
       send('audio-end', { seq: seqNo });
@@ -203,7 +205,12 @@ async function runTurn(opts) {
     text: full,
     speakText: speakable(full),
     emotion,
-    timings: { firstTokenMs, firstAudioMs, totalMs },
+    timings: {
+      firstTokenMs,
+      firstAudioMs,
+      totalMs,
+      audioMs: Math.round(audioBytes / 48), // 24kHz * 2 字节 = 48 字节/毫秒
+    },
   };
 }
 
