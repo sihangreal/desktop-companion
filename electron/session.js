@@ -161,6 +161,18 @@ class SessionStore {
     return null;
   }
 
+  /** 只要某时间点之后的轮次（换人设后开新章节用） */
+  recentSince(isoTs, n = 12) {
+    if (!isoTs) return this.recent(n);
+    const from = new Date(isoTs).getTime();
+    if (!Number.isFinite(from)) return this.recent(n);
+    const kept = this.turns.filter((r) => {
+      const t = new Date(r.ts).getTime();
+      return Number.isFinite(t) && t > from;
+    });
+    return kept.slice(-n * 2).map((r) => ({ role: r.role, content: r.text }));
+  }
+
   /** 最近 n 轮（一轮 = user + assistant），返回 [{role, content}] */
   recent(n = 12) {
     const records = this.turns.slice(-n * 2);

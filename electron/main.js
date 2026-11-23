@@ -790,7 +790,16 @@ async function chatTurnV2(userText) {
     : personaPrompt;
   logger.log(`system 预览${personaFresh ? '（人设已更新）' : ''}: ` + effectivePersona.slice(0, 100).replace(/\n/g, ' / '));
   // 上下文来自会话记录；记录不可用时退回内存窗口
-  const before = sessionStore ? sessionStore.recent(MAX_HISTORY_TURNS) : history.slice();
+  // 人设比历史新 → 开新章节：旧轮次不进上下文（A 方案），摘要与事实后续仍会带入
+  let before;
+  if (sessionStore) {
+    before = personaFresh
+      ? sessionStore.recentSince(persona.updatedAt, MAX_HISTORY_TURNS)
+      : sessionStore.recent(MAX_HISTORY_TURNS);
+    if (personaFresh) logger.log('人设已更新 → 开启新章节，旧历史不入上下文');
+  } else {
+    before = history.slice();
+  }
   const turnId = sessionStore ? sessionStore.reserveTurnId() : null;
   if (sessionStore) sessionStore.append({ turnId, role: 'user', text: userText });
 
