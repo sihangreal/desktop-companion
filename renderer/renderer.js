@@ -310,13 +310,17 @@ function ensurePlayCtx() {
 let soundOn = true;
 let videoVolume = 0.7;
 
-/** 应用视频音量；duck=true 时压低，给她说话让路 */
+/** 应用视频音量：只让当前这段出声，另一段强制静音（避免切换时叠音） */
 function applyVideoVolume(duck = false) {
-  for (const id of ['vA', 'vB']) {
-    const el = $(id);
-    if (!el) continue;
-    el.muted = !soundOn;
-    el.volume = soundOn ? Math.max(0, Math.min(1, videoVolume * (duck ? 0.22 : 1))) : 0;
+  const cur = $(activeVideo);
+  if (cur) {
+    cur.muted = !soundOn;
+    cur.volume = soundOn ? Math.max(0, Math.min(1, videoVolume * (duck ? 0.22 : 1))) : 0;
+  }
+  const other = $(activeVideo === 'vA' ? 'vB' : 'vA');
+  if (other) {
+    other.muted = true;
+    other.volume = 0;
   }
   const btn = $('btn-sound');
   if (btn) btn.textContent = `声音：${soundOn ? '开' : '关'}`;
@@ -654,6 +658,7 @@ function releaseTurn() {
 // ---------------------------------------------------------------- 对话
 
 async function talkToHer(text) {
+  lastTurnAt = Date.now();
   replyBuf = '';
   setReply('');
   const t0 = Date.now();
@@ -785,6 +790,8 @@ let idleVideoTimer = null;
 let speakVideoTimer = null;
 
 /** 把画面的视频源换成 url（双 video 交叉淡入） */
+let swapToken = 0;
+
 function swapVideo(url, instant) {
   if (!url) return;
   const curEl = $(activeVideo);
@@ -792,27 +799,54 @@ function swapVideo(url, instant) {
 
   const nextId = activeVideo === 'vA' ? 'vB' : 'vA';
   const nextEl = $(nextId);
+  const token = (swapToken += 1);
 
   nextEl.src = url;
   nextEl.dataset.src = url;
   nextEl.currentTime = 0;
   nextEl.loop = true;
+
   const p = nextEl.play();
   if (p && p.catch) p.catch(() => {});
-  nextEl.classList.add('active');
-  curEl.classList.remove('active');
-  activeVideo = nextId;
-  applyVideoVolume(playingCount > 0);
 
-  const oldEl = curEl;
-  setTimeout(() => {
-    if (!oldEl.classList.contains('active')) {
-      oldEl.removeAttribute('src');
-      oldEl.dataset.src = '';
-      oldEl.load();
-    }
-  }, 700);
-  if (instant) nextEl.classList.add('active');
+  // 等新视频能出画面再切换，避免淡入到黑屏；600ms 兜底
+  const reveal = () => {
+    if (token !== swapToken) return; // 期间又切过，放弃
+    if (nextEl.classList.contains('active')) return;
+
+    nextEl.classList.add('active');
+    curEl.classList.remove('active');
+    activeVideo = nextId;
+    // 只让当前这段出声；旧的那段立刻静音，避免两段叠音
+    applyVideoVolume(playingCount > 0);
+
+    setTimeout(() => {
+      if (!curEl.classList.contains('active')) {
+        try {
+          curEl.pause();
+        } catch {
+          /* ignore */
+        }
+        curEl.removeAttribute('src');
+        curEl.dataset.src = '';
+        curEl.load();
+      }
+    }, 320);
+  };
+
+  if (instant || nextEl.readyState >= 2) {
+    reveal();
+  } else {
+    const onReady = () => {
+      nextEl.removeEventListener('canplay', onReady);
+      reveal();
+    };
+    nextEl.addEventListener('canplay', onReady);
+    setTimeout(() => {
+      nextEl.removeEventListener('canplay', onReady);
+      reveal();
+    }, 600);
+  }
 }
 
 /** 按对话状态切换：她说话时用 speaking 视频，其余用 idle */
@@ -959,6 +993,8 @@ let rotateSeconds = 60;
 let rotateScope = 'all';
 let favorites = new Set();
 let rotateTimer = null;
+let lastRotateAt = Date.now();
+let lastTurnAt = 0;
 let lastPicks = [];
 let settingsLoaded = false;
 
@@ -982,6 +1018,7 @@ function scopePool() {
 /** 换装 + 持久化 + 面板跟随高亮 */
 function applyAndPersist(id) {
   applyLook(id, false);
+  lastRotateAt = Date.now();
   window.companion.setLook(id).catch(console.error);
 
   const look = findLook(id);
@@ -1025,6 +1062,10 @@ function stepFavorites() {
     setStatus('还没有收藏：点封面右上角的爱心');
     return;
   }
+  if (favs.length === 1) {
+    setStatus('只收藏了 1 套，轮播看不出变化；多收藏几套');
+    return;
+  }
   const i = favs.findIndex((l) => l.id === currentLookId);
   const next = favs[(i + 1) % favs.length];
   window.companion.uiLog(`favorites -> ${next.id} ${next.name}`);
@@ -1057,8 +1098,37 @@ function schedulePlay() {
   );
 
   if (playMode === 'single') return;
+  lastRotateAt = Date.now();
   rotateTimer = setInterval(tickPlay, Math.max(10, rotateSeconds) * 1000);
 }
+
+// 轮播看门狗：发现状态卡死或长时间没轮换就自愈（每 10 秒检查一次）
+setInterval(() => {
+  if (playMode === 'single') return;
+
+  // 状态卡在 speaking/thinking，但既没音频也没在对话 → 强制回到 idle
+  if (state !== 'idle' && playingCount === 0 && !busy && Date.now() - lastRotateAt > 15000) {
+    window.companion.uiLog(`watchdog: 状态卡在 ${state}（无音频无对话），强制回到 idle`);
+    setState('idle');
+  }
+
+  // 对话卡死自愈：busy 但长时间没有音频输出
+  if (busy && playingCount === 0 && lastTurnAt && Date.now() - lastTurnAt > 25000) {
+    window.companion.uiLog('watchdog: 对话超过 25s 未收尾，强制释放');
+    busy = false;
+    setState('idle');
+    lastTurnAt = 0;
+  }
+
+  // 已经超过 3 个轮换周期还没换 → 主动补一次
+  const staleMs = Date.now() - lastRotateAt;
+  const limitMs = Math.max(30, rotateSeconds * 3) * 1000;
+  if (staleMs > limitMs && state === 'idle' && !busy && playingCount === 0) {
+    window.companion.uiLog(`watchdog: ${Math.round(staleMs / 1000)}s 未轮换，补触发一次`);
+    lastRotateAt = Date.now();
+    tickPlay();
+  }
+}, 10000);
 
 function toggleFavorite(id) {
   if (favorites.has(id)) favorites.delete(id);
