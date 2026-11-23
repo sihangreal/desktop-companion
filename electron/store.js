@@ -23,6 +23,7 @@ const DEFAULTS = {
   emotionStyle: true,
   maxConcurrentTts: 2,
   providers: null,
+  recordPaused: false,
   firstRun: true,
 };
 

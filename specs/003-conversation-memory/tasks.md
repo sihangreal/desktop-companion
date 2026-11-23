@@ -75,14 +75,14 @@
 
 ## S5 · 导出与隐私开关
 
-- [ ] T-501 `exportToday()`：按 §3.6 生成 Markdown（FR-335）
-- [ ] T-502 导出前创建 `data/exports/`，返回绝对路径
-- [ ] T-503 设置面板加"导出今天"按钮，完成后显示路径
-- [ ] T-504 `config.recordPaused` 默认 false，加入 store 默认值（FR-336）
-- [ ] T-505 暂停时跳过 append 与 memory-job，仍正常对话（FR-336）
-- [ ] T-506 面板加"暂停记录"开关，状态持久化
-- [ ] T-507 面板加"清空全部记录"按钮（二次确认）（FR-312）
-- [ ] T-508 `session:stats` 显示当天轮次数与最近 5 条摘要（FR-334）
+- [x] T-501 `exportToday()`：按 §3.6 生成 Markdown（FR-335）
+- [x] T-502 导出前创建 `data/exports/`，返回绝对路径
+- [x] T-503 设置面板加"导出今天"按钮，完成后显示路径
+- [x] T-504 `config.recordPaused` 默认 false，加入 store 默认值（FR-336）
+- [x] T-505 暂停时跳过 append 与 memory-job，仍正常对话（FR-336）
+- [x] T-506 面板加"暂停记录"开关，状态持久化
+- [x] T-507 面板加"清空全部记录"按钮（二次确认）（FR-312）
+- [x] T-508 `session:stats` 显示当天轮次数与最近 5 条摘要（FR-334）
 
 **DoD**：导出的 md 能被 VS Code 正常预览；暂停后 `sessions/` 不再增长。
 

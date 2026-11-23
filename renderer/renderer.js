@@ -53,6 +53,15 @@ async function refresh() {
         console.error(err);
       }
     }
+    // 记录统计：每次刷新都更新
+    if (!recordStatsBusy) {
+      recordStatsBusy = true;
+      loadRecordStats()
+        .catch(() => {})
+        .finally(() => {
+          recordStatsBusy = false;
+        });
+    }
     clickThrough = info.clickThrough;
     const btn = $('btn-clickthrough');
     if (btn) btn.textContent = `穿透：${clickThrough ? '开' : '关'}`;
@@ -173,6 +182,72 @@ if (btnResetPersona) {
       setPersonaHint('已恢复默认', 'ok');
     } catch (e) {
       setPersonaHint(String(e && e.message ? e.message : e), 'bad');
+    }
+  };
+}
+
+// ---- 记录与记忆 ----
+let recordPaused = false;
+let recordStatsBusy = false;
+
+function setRecordHint(text, kind) {
+  const el = $('record-hint');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'hint' + (kind ? ` ${kind}` : '');
+}
+
+async function loadRecordStats() {
+  try {
+    const s = await window.companion.sessionStats();
+    if (!s) return;
+    recordPaused = !!s.recordPaused;
+    setText('v-session', `${s.turns} 轮 · ${s.records} 条`, 'ok');
+    setText('v-facts', s.facts ? `${s.facts} 条` : '暂无', s.facts ? 'ok' : '');
+    const btn = $('btn-pause-record');
+    if (btn) btn.textContent = `暂停记录：${recordPaused ? '开' : '关'}`;
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+const btnExport = $('btn-export');
+if (btnExport) {
+  btnExport.onclick = async () => {
+    try {
+      const r = await window.companion.exportSession();
+      setRecordHint(`已导出 ${r.turns} 轮 → ${r.path}`, 'ok');
+    } catch (e) {
+      setRecordHint(String(e && e.message ? e.message : e), 'bad');
+    }
+  };
+}
+
+const btnPauseRecord = $('btn-pause-record');
+if (btnPauseRecord) {
+  btnPauseRecord.onclick = async () => {
+    try {
+      recordPaused = !recordPaused;
+      await window.companion.setConfig({ recordPaused });
+      btnPauseRecord.textContent = `暂停记录：${recordPaused ? '开' : '关'}`;
+      setRecordHint(recordPaused ? '已暂停：不写会话、不更新记忆' : '已恢复记录', 'ok');
+      await loadRecordStats();
+    } catch (e) {
+      setRecordHint(String(e && e.message ? e.message : e), 'bad');
+    }
+  };
+}
+
+const btnClearRecords = $('btn-clear-records');
+if (btnClearRecords) {
+  btnClearRecords.onclick = async () => {
+    if (!window.confirm('确定清空全部对话记录和长期记忆？此操作不可恢复。')) return;
+    try {
+      const r = await window.companion.clearAllSessions();
+      setRecordHint(`已清空（${r.removed} 个文件）`, 'ok');
+      await loadRecordStats();
+    } catch (e) {
+      setRecordHint(String(e && e.message ? e.message : e), 'bad');
     }
   };
 }

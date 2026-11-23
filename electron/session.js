@@ -290,10 +290,106 @@ class SessionStore {
     return this.turns.slice(start, cutoff);
   }
 
-  /** 当天统计（S5 使用，先提供） */
+  /** 当天统计（S5 使用） */
   stats() {
     const userTurns = this.turns.filter((r) => r.role === 'user').length;
     return { date: this.date, turns: userTurns, records: this.turns.length, badLines: this.badLines };
+  }
+
+  /** 最近 n 天的摘要（含当天），用于面板展示 */
+  recentSummaries(n = 5) {
+    const out = [];
+    if (!this.ensureDir()) return out;
+    let names = [];
+    try {
+      names = fs.readdirSync(this.dir).filter((x) => /^\d{4}-\d{2}-\d{2}\.meta\.json$/.test(x));
+    } catch {
+      return out;
+    }
+    names.sort().reverse();
+    for (const name of names.slice(0, n)) {
+      const date = name.replace('.meta.json', '');
+      const m = this.meta(date);
+      if (m.summary) out.push({ date, summary: m.summary });
+    }
+    return out;
+  }
+
+  /** 导出当天记录为 Markdown（FR-335、§3.6） */
+  exportToday({ assistantName = '她', facts = [] } = {}) {
+    const date = this.date;
+    if (!date) throw new Error('会话尚未初始化');
+
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const now = new Date();
+    const stamp = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+    const turns = this.turns.filter((r) => r.role === 'user' || r.role === 'assistant');
+    const userTurns = turns.filter((r) => r.role === 'user').length;
+
+    const lines = [];
+    lines.push(`# ${date} 对话记录`);
+    lines.push('');
+    lines.push(`> 共 ${userTurns} 轮 · 导出时间 ${stamp} · 由桌面陪伴导出`);
+    lines.push('');
+    lines.push('## 对话');
+    lines.push('');
+
+    const hhmm = (ts) => {
+      const m = /\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/.exec(String(ts || ''));
+      return m ? m[1] : '';
+    };
+    const emotionLabel = {
+      neutral: '平静',
+      happy: '轻快',
+      shy: '害羞',
+      worried: '关切',
+      sad: '低落',
+      curious: '好奇',
+      playful: '俏皮',
+    };
+
+    for (const t of turns) {
+      if (t.role === 'user') {
+        lines.push(`**你** · ${hhmm(t.ts)}`);
+      } else {
+        const bits = [`**${assistantName}**`, hhmm(t.ts)];
+        if (t.emotion) bits.push(emotionLabel[t.emotion] || t.emotion);
+        if (t.firstAudioMs) bits.push(`首声 ${t.firstAudioMs}ms`);
+        lines.push(bits.join(' · '));
+      }
+      lines.push('');
+      lines.push(String(t.text || '').trim());
+      lines.push('');
+    }
+
+    const meta = this.meta();
+    lines.push('## 当日摘要');
+    lines.push('');
+    lines.push(meta.summary || '（暂无）');
+    lines.push('');
+
+    if (facts && facts.length) {
+      lines.push('## 长期记忆');
+      lines.push('');
+      const label = {
+        'user.name': '称呼',
+        'user.like': '喜欢',
+        'user.dislike': '不喜欢',
+        'user.job': '工作',
+        'user.schedule': '作息',
+        'user.event': '近况',
+      };
+      for (const f of facts) {
+        lines.push(`- ${label[f.key] || f.key}：${f.value}`);
+      }
+      lines.push('');
+    }
+
+    const exportDir = path.join(path.dirname(this.dir), 'exports');
+    fs.mkdirSync(exportDir, { recursive: true });
+    const file = path.join(exportDir, `${date}.md`);
+    fs.writeFileSync(file, lines.join('\n'), 'utf8');
+    return { path: file, turns: userTurns };
   }
 }
 

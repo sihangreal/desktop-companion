@@ -367,12 +367,13 @@ ipcMain.handle('app:info', () => ({
   favorites: Array.isArray(config.favorites) ? config.favorites : [],
   volume: typeof config.volume === 'number' ? config.volume : 70,
   muted: !!config.muted,
+  recordPaused: !!config.recordPaused,
 }));
 
 // 通用设置写入（播放方式、停留时间、随机范围、收藏、音量）
 ipcMain.handle('config:set', (_e, patch) => {
   if (patch && typeof patch === 'object') {
-    for (const key of ['playMode', 'rotateSeconds', 'rotateScope', 'favorites', 'volume', 'muted']) {
+    for (const key of ['playMode', 'rotateSeconds', 'rotateScope', 'favorites', 'volume', 'muted', 'recordPaused']) {
       if (key in patch) config[key] = patch[key];
     }
     store.save(configPath, config);
@@ -408,6 +409,37 @@ ipcMain.handle('persona:set', (_e, patch) => {
 ipcMain.handle('persona:reset', () => {
   if (!personaStore) throw new Error('人设存储不可用');
   return personaStore.reset();
+});
+
+// 会话记录：统计、导出、清空
+ipcMain.handle('session:stats', () => {
+  if (!sessionStore) return null;
+  const s = sessionStore.stats();
+  const meta = sessionStore.meta();
+  return {
+    ...s,
+    summary: meta.summary || '',
+    summaries: sessionStore.recentSummaries(5),
+    facts: memoryStore ? memoryStore.facts().length : 0,
+    recordPaused: !!config.recordPaused,
+  };
+});
+
+ipcMain.handle('session:export', () => {
+  if (!sessionStore) throw new Error('会话存储不可用');
+  const p = personaStore ? personaStore.get() : { name: '她' };
+  const facts = memoryStore ? memoryStore.facts() : [];
+  const r = sessionStore.exportToday({ assistantName: p.name || '她', facts });
+  logger.log(`导出记录 ${r.path}（${r.turns} 轮）`);
+  return r;
+});
+
+ipcMain.handle('session:clearAll', () => {
+  let removed = 0;
+  if (sessionStore) removed += sessionStore.clearAll().removed;
+  if (memoryStore) memoryStore.clear();
+  logger.log(`清空全部记录：删除 ${removed} 个会话文件，记忆已清空`);
+  return { removed };
 });
 
 ipcMain.handle('mode:set', (_e, mode) => {  applyMode(mode === 'desktop' ? 'desktop' : 'window');
@@ -850,7 +882,8 @@ async function chatTurnV2(userText) {
   );
 
   const turnId = sessionStore ? sessionStore.reserveTurnId() : null;
-  if (sessionStore) sessionStore.append({ turnId, role: 'user', text: userText });
+  const canRecord = sessionStore && !config.recordPaused;
+  if (canRecord) sessionStore.append({ turnId, role: 'user', text: userText });
 
   try {
     if (!keys.llm) throw new Error('未配置 LLM 的 API Key');
@@ -866,7 +899,7 @@ async function chatTurnV2(userText) {
       maxConcurrent: Math.max(1, config.maxConcurrentTts || 2),
     });
 
-    if (sessionStore) {
+    if (canRecord) {
       sessionStore.append({
         turnId,
         role: 'assistant',

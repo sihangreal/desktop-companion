@@ -27,6 +27,9 @@ contextBridge.exposeInMainWorld('companion', {
   getPersona: () => ipcRenderer.invoke('persona:get'),
   setPersona: (patch) => ipcRenderer.invoke('persona:set', patch),
   resetPersona: () => ipcRenderer.invoke('persona:reset'),
+  sessionStats: () => ipcRenderer.invoke('session:stats'),
+  exportSession: () => ipcRenderer.invoke('session:export'),
+  clearAllSessions: () => ipcRenderer.invoke('session:clearAll'),
   toggleMode: () => ipcRenderer.invoke('mode:toggle'),
   onModeChanged: (cb) => {
     const handler = (_e, payload) => cb(payload);

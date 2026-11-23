@@ -146,6 +146,28 @@ test('清理 7 天前文件', () => {
   assert.strictEqual(r.removed, 2);
 });
 
+test('导出 Markdown 结构正确', () => {
+  const dir = path.join(tmpDir('export'), 'sessions');
+  const s = new SessionStore({ dir, log: () => {} });
+  s.open(dateKey());
+  s.append({ turnId: 't_1', role: 'user', text: '今天有点累' });
+  s.append({ turnId: 't_1', role: 'assistant', text: '那早点休息。', emotion: 'worried', firstAudioMs: 1080 });
+  s.setMeta({ summary: '聊到工作压力。' });
+
+  const r = s.exportToday({ assistantName: '小夜', facts: [{ key: 'user.name', value: '阿哲' }] });
+  const text = fs.readFileSync(r.path, 'utf8');
+  assert.ok(text.startsWith('# '));
+  assert.ok(text.includes('## 对话'));
+  assert.ok(text.includes('**你**'));
+  assert.ok(text.includes('**小夜**'));
+  assert.ok(text.includes('关切'));
+  assert.ok(text.includes('## 当日摘要'));
+  assert.ok(text.includes('聊到工作压力。'));
+  assert.ok(text.includes('## 长期记忆'));
+  assert.ok(text.includes('称呼：阿哲'));
+  assert.strictEqual(r.turns, 1);
+});
+
 console.log('\n[persona]');
 
 test('默认值、不落盘', () => {
