@@ -7,15 +7,15 @@
 
 ## S1 · 会话记录（`electron/session.js`）
 
-- [ ] T-101 建立 `data/sessions/` 目录，缺失时自动创建（FR-301、NFR-307）
-- [ ] T-102 实现 `append(record)`：序列化 → 追加 → 失败仅记日志（FR-308、NFR-302）
-- [ ] T-103 实现 `open(date)`：读取当天 JSONL，逐行容错（FR-303、§7 坏行）
-- [ ] T-104 实现 `recent(n)`：返回最近 n 轮原始消息（FR-313）
-- [ ] T-105 `turnId` 生成 `t_YYYYMMDD_NNNN`，当日自增（FR-309）
-- [ ] T-106 实现 `cleanup(7)`：删除 7 天前的 `.jsonl` 与 `.meta.json`（FR-310）
-- [ ] T-107 启动时调用 `cleanup`，并在日志记录删除数量（FR-310）
-- [ ] T-108 实现 `clearAll()`：清空 sessions 内容（FR-312）
-- [ ] T-109 主流程接入：ASR 后写 user 行、整轮结束写 assistant 行（FR-306、FR-307）
+- [x] T-101 建立 `data/sessions/` 目录，缺失时自动创建（FR-301、NFR-307）
+- [x] T-102 实现 `append(record)`：序列化 → 追加 → 失败仅记日志（FR-308、NFR-302）
+- [x] T-103 实现 `open(date)`：读取当天 JSONL，逐行容错（FR-303、§7 坏行）
+- [x] T-104 实现 `recent(n)`：返回最近 n 轮原始消息（FR-313）
+- [x] T-105 `turnId` 生成 `t_YYYYMMDD_NNNN`，当日自增（FR-309）
+- [x] T-106 实现 `cleanup(7)`：删除 7 天前的 `.jsonl` 与 `.meta.json`（FR-310）
+- [x] T-107 启动时调用 `cleanup`，并在日志记录删除数量（FR-310）
+- [x] T-108 实现 `clearAll()`：清空 sessions 内容（FR-312）
+- [x] T-109 主流程接入：ASR 后写 user 行、整轮结束写 assistant 行（FR-306、FR-307）
 
 **DoD**：聊 3 轮 → 重启 → `logs` 显示加载 3 轮；`sessions/当天.jsonl` 有 6 行合法 JSON。
 
