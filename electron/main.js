@@ -10,6 +10,7 @@ const logger = require('./logger');
 const engine = require('./engine');
 const { SessionStore, dateKey } = require('./session');
 const { PersonaStore } = require('./persona');
+const promptBuilder = require('./prompt');
 const asrProvider = require('./providers/asr');
 
 // 三路默认配置；用户可在 data/config.json 的 providers 里逐项覆盖
@@ -780,15 +781,12 @@ async function chatTurnV2(userText) {
   const persona = personaStore
     ? personaStore.toSystemParts()
     : { identity: PERSONA, constraints: '' };
-  const personaPrompt = [persona.identity, persona.constraints].filter(Boolean).join('\n\n');
+
   // 人设比历史更新时，明确要求压过历史里的旧语气（否则模型会模仿旧回复）
   const personaAt = persona.updatedAt ? new Date(persona.updatedAt).getTime() : 0;
   const lastTs = sessionStore && sessionStore.lastTs ? sessionStore.lastTs() : null;
   const personaFresh = !!(personaAt && lastTs && personaAt > new Date(lastTs).getTime());
-  const effectivePersona = personaFresh
-    ? `${personaPrompt}\n\n（角色设定刚刚更新：请严格按最新设定回复，忽略历史对话中的旧语气与旧身份。）`
-    : personaPrompt;
-  logger.log(`system 预览${personaFresh ? '（人设已更新）' : ''}: ` + effectivePersona.slice(0, 100).replace(/\n/g, ' / '));
+
   // 上下文来自会话记录；记录不可用时退回内存窗口
   // 人设比历史新 → 开新章节：旧轮次不进上下文（A 方案），摘要与事实后续仍会带入
   let before;
@@ -800,6 +798,22 @@ async function chatTurnV2(userText) {
   } else {
     before = history.slice();
   }
+
+  // 四段 system + 预算裁剪（摘要与事实在 S4 接入，这里先留空）
+  const built = promptBuilder.build({
+    persona,
+    facts: [],
+    summary: '',
+    yesterdaySummary: '',
+    recent: before,
+    userText,
+    newChapter: personaFresh,
+  });
+  logger.log(
+    `system ${built.budget.systemTokens}t 历史 ${built.budget.historyTokens}t/${built.budget.historyTurns}轮 预览: ` +
+      built.system.slice(0, 200).replace(/\n/g, ' / ')
+  );
+
   const turnId = sessionStore ? sessionStore.reserveTurnId() : null;
   if (sessionStore) sessionStore.append({ turnId, role: 'user', text: userText });
 
@@ -808,11 +822,9 @@ async function chatTurnV2(userText) {
     if (!keys.tts) throw new Error('未配置 TTS 的 API Key（MiMo）');
 
     const r = await engine.runTurn({
-      userText,
+      prompt: built,
       providers: prov,
       keys,
-      persona: effectivePersona,
-      history: before,
       send,
       signal: ctrl.signal,
       emotionStyle: config.emotionStyle !== false,

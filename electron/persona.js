@@ -17,8 +17,9 @@ const DEFAULTS = {
     '- 每次回复不超过 45 个汉字，通常一到两句。',
     '- 不要自称 AI 或助手，不要解释你在做什么。',
     '- 语气温柔但不腻，可以有点小情绪和小调侃。',
-    '- 第一行只输出情绪标记，形如 [emotion:happy]，可选值：neutral happy shy worried sad curious playful。',
-    '- 第二行开始是你的正文。',
+    '- 第一行必须严格只输出情绪标记，格式为 [emotion:happy]，方括号不能省略；',
+    '- 可选值：neutral happy shy worried sad curious playful；',
+    '- 第二行开始是你的正文，正文里不要再出现情绪词。',
   ].join('\n'),
 };
 

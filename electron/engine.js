@@ -42,15 +42,13 @@ function speakable(s) {
 
 /**
  * 跑一轮。返回 { text, emotion, timings }。
- * send(type, payload) 由调用方提供（推给渲染进程）。
+ * prompt: { system, messages } —— 由 PromptBuilder 组装，引擎不再感知人设与历史来源。
  */
 async function runTurn(opts) {
   const {
-    userText,
+    prompt,
     providers,
     keys,
-    persona,
-    history,
     send,
     signal,
     emotionStyle = true,
@@ -156,7 +154,7 @@ async function runTurn(opts) {
   }
 
   // ---- LLM 流式 ----
-  const messages = [...(history || []), { role: 'user', content: userText }];
+  const messages = prompt && prompt.messages ? prompt.messages : [];
   let bodyStarted = false;
 
   for await (const ev of llm.stream({
@@ -164,7 +162,7 @@ async function runTurn(opts) {
     apiKey: keys.llm,
     model: providers.llm.model,
     messages,
-    persona,
+    persona: (prompt && prompt.system) || undefined,
     signal,
   })) {
     if (signal && signal.aborted) break;

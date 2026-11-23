@@ -14,6 +14,8 @@ const DEFAULT_PERSONA = `你是一个住在用户桌面上的陪伴型角色，�
 - 第一行只输出情绪标记，形如 [emotion:happy]，可选值：neutral happy shy worried sad curious playful。
 - 第二行开始是你的正文。`;
 
+const EMOTIONS = 'neutral|happy|shy|worried|sad|curious|playful';
+
 const DEFAULT_STYLE = {
   neutral: '平静',
   happy: '轻快',
@@ -23,6 +25,22 @@ const DEFAULT_STYLE = {
   curious: '好奇',
   playful: '俏皮',
 };
+
+/** 首行情绪标记：兼容 [emotion:x] / 裸词 / 只带一半括号 */
+function matchEmotionHead(text) {
+  const m1 = text.match(new RegExp(`^\\s*\\[emotion:\\s*([a-z]+)\\s*\\]\\s*\\n?`, 'i'));
+  if (m1) return { emotion: m1[1].toLowerCase(), rest: text.slice(m1[0].length) };
+
+  const m2 = text.match(new RegExp(`^\\s*\\[?\\s*(${EMOTIONS})\\s*\\]?\\s*\\n`, 'i'));
+  if (m2) return { emotion: m2[1].toLowerCase(), rest: text.slice(m2[0].length) };
+
+  // 同一行紧跟正文：happy 你来啦
+  const m3 = text.match(new RegExp(`^\\s*\\[?\\s*(${EMOTIONS})\\s*\\]?[\\s,，。.!！?？]+`, 'i'));
+  if (m3 && text.length >= m3[0].length + 2) {
+    return { emotion: m3[1].toLowerCase(), rest: text.slice(m3[0].length) };
+  }
+  return null;
+}
 
 /**
  * 流式生成。返回 async generator，逐段产出 { delta, emotion? }。
@@ -70,11 +88,11 @@ async function* stream(opts) {
 
     if (!headDone) {
       pending += text;
-      const m = pending.match(/^\s*\[emotion:\s*([a-z]+)\s*\]\s*\n?/i);
+      const m = matchEmotionHead(pending);
       if (m) {
         headDone = true;
-        pending = pending.slice(m[0].length);
-        yield { emotion: m[1].toLowerCase() };
+        pending = m.rest;
+        yield { emotion: m.emotion };
         if (pending) yield { delta: pending };
         pending = '';
         continue;

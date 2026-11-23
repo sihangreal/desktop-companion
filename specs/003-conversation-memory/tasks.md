@@ -42,14 +42,14 @@
 
 ## S3 · Prompt 组装（`electron/prompt.js`）
 
-- [ ] T-301 实现四段拼装：身份 / 记忆 / 摘要 / 约束，空段跳过（FR-324、FR-325）
-- [ ] T-302 实现 `est(text)` 粗算 token（中文按 1 字 = 1 token）
-- [ ] T-303 实现裁剪：摘要 >60→40→20 字，facts >5 按置信度删，identity 截 300 字（FR-328）
-- [ ] T-304 实现历史裁剪：超 1200 token 删最老两条（FR-328）
-- [ ] T-305 返回 `{ system, messages, budget }`（§6）
-- [ ] T-306 引擎改造：`runTurn({ system, messages })`，删除内部 persona/history 参数（D-308）
-- [ ] T-307 日志输出 system 前 200 字（脱敏）（FR-329）
-- [ ] T-308 单元测试：超长摘要、facts=20、history=30 条 → 断言预算不超（§6）
+- [x] T-301 实现四段拼装：身份 / 记忆 / 摘要 / 约束，空段跳过（FR-324、FR-325）
+- [x] T-302 实现 `est(text)` 粗算 token（中文按 1 字 = 1 token）
+- [x] T-303 实现裁剪：摘要 >60→40→20 字，facts >5 按置信度删，identity 截 300 字（FR-328）
+- [x] T-304 实现历史裁剪：超 1200 token 删最老两条（FR-328）
+- [x] T-305 返回 `{ system, messages, budget }`（§6）
+- [x] T-306 引擎改造：`runTurn({ system, messages })`，删除内部 persona/history 参数（D-308）
+- [x] T-307 日志输出 system 前 200 字（脱敏）（FR-329）
+- [x] T-308 单元测试：超长摘要、facts=20、history=30 条 → 断言预算不超（§6）
 
 **DoD**：`logs` 能看到四段 system；单测全绿；对话正常。
 
