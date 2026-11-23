@@ -11,8 +11,6 @@ data/
 frames/
 
 # 旧 Tauri 工程归档（含 6 GB 构建缓存，仅本机保留）
-legacy/
-
 # 编辑器与系统文件
 .vscode/
 .idea/
