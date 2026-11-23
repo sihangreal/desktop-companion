@@ -331,6 +331,8 @@ function resetAudioOrder() {
   playSeq = 0;
   audioBuffers = new Map();
   endedSeq = new Set();
+  // 新一轮开始，重置排程游标，避免把「上一轮到现在」的静默算成断档
+  nextPlayAt = 0;
 }
 
 function pushAudio(seq, pcm) {
@@ -378,11 +380,12 @@ function enqueuePcm(u8) {
   src.buffer = buf;
   src.connect(ctx.destination);
 
-  const startAt = Math.max(ctx.currentTime, nextPlayAt);
-  const gapMs = Math.round((startAt - ctx.currentTime) * 1000);
-  if (gapMs > 250) {
-    // 播放队列断档，说明合成跟不上播放（或顺序缓冲卡住）
-    window.companion.uiLog(`playback gap ${gapMs}ms (playing=${playingCount})`);
+  // 真正的断档 = 队列已空的时间；只在同一轮内（已有音频在播/排队）才统计
+  const now = ctx.currentTime;
+  const underrunMs = Math.round(Math.max(0, now - nextPlayAt) * 1000);
+  const startAt = Math.max(now, nextPlayAt);
+  if (underrunMs > 250 && playingCount > 0) {
+    window.companion.uiLog(`playback gap ${underrunMs}ms (playing=${playingCount})`);
   }
   src.start(startAt);
   nextPlayAt = startAt + buf.duration;
@@ -393,7 +396,13 @@ function enqueuePcm(u8) {
       clearTimeout(idleVideoTimer);
       idleVideoTimer = null;
     }
-    playStateVideo('speaking'); // 切到“张嘴”那段
+    // 按“实际出声时间”切，而不是按音频块到达时间（D1）
+    if (speakVideoTimer) clearTimeout(speakVideoTimer);
+    const lead = Math.max(0, (startAt - ctx.currentTime) * 1000 - 120);
+    speakVideoTimer = setTimeout(() => {
+      speakVideoTimer = null;
+      playStateVideo('speaking');
+    }, lead);
   }
   playingCount++;
   setState('speaking');
@@ -402,12 +411,13 @@ function enqueuePcm(u8) {
     if (playingCount <= 0) {
       playingCount = 0;
       applyVideoVolume(false);
-      // 句子之间会有短暂空档，等一会儿再切回“闭嘴”，避免画面来回闪
+      // 等最后一块真正播完再切回「闭嘴」，而不是 onended 后固定 900ms（D2）
+      const tailMs = Math.max(150, Math.round((nextPlayAt - ctx.currentTime) * 1000) + 150);
       if (idleVideoTimer) clearTimeout(idleVideoTimer);
       idleVideoTimer = setTimeout(() => {
         idleVideoTimer = null;
         if (playingCount === 0) playStateVideo('idle');
-      }, 900);
+      }, tailMs);
       releaseTurn();
     }
   };
@@ -772,6 +782,7 @@ function findLook(id) {
 
 let currentLook = null;
 let idleVideoTimer = null;
+let speakVideoTimer = null;
 
 /** 把画面的视频源换成 url（双 video 交叉淡入） */
 function swapVideo(url, instant) {

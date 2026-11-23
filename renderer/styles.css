@@ -99,7 +99,7 @@ button.ghost {
   height: 100%;
   object-fit: cover;
   opacity: 0;
-  transition: opacity 420ms ease;
+  transition: opacity 250ms ease;
   pointer-events: none;
 }
 

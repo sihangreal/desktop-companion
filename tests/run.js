@@ -201,6 +201,41 @@ test('损坏文件回退默认', () => {
   assert.strictEqual(new PersonaStore({ file, log: () => {} }).get().name, '小夜');
 });
 
+console.log('\n[engine]');
+
+const { splitSentences } = require('../electron/engine');
+
+test('逗号不再切句', () => {
+  const t = '今天过得怎么样呀，有没有遇到什么开心的事情？';
+  const r = splitSentences(t, true, false);
+  assert.strictEqual(r.sentences.length, 1);
+  assert.strictEqual(r.sentences[0], t);
+});
+
+test('首句快路径：短门槛 + 逗号可断', () => {
+  const t = '下雨天最适合窝着了，你记得给自己倒杯热水暖暖。';
+  const r = splitSentences(t, true, true);
+  assert.strictEqual(r.sentences.length, 2);
+  assert.strictEqual(r.sentences[0], '下雨天最适合窝着了，');
+  assert.ok(r.sentences[0].length <= 12);
+});
+
+test('超长无标点强制在 32 字切', () => {
+  const t = '啊'.repeat(40);
+  const r = splitSentences(t, true, false);
+  assert.strictEqual(r.sentences[0].length, 32);
+  assert.strictEqual(r.sentences.length, 2);
+});
+
+test('增量输入：未成句的部分留在 rest', () => {
+  const r1 = splitSentences('今天过得怎么样呀，有没有', false, false);
+  assert.strictEqual(r1.sentences.length, 0);
+  assert.ok(r1.rest.length > 0);
+  const r2 = splitSentences(r1.rest + '遇到什么开心的事情？', false, false);
+  assert.strictEqual(r2.sentences.length, 1);
+  assert.strictEqual(r2.rest, '');
+});
+
 console.log('\n[memory]');
 
 test('单值 key：低置信度不覆盖，高置信度覆盖', () => {

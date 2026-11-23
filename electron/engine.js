@@ -10,20 +10,31 @@
 const llm = require('./providers/llm');
 const tts = require('./providers/tts');
 
-const MARKS = '。！？；，、,.!?;';
+// 只在句末切分；逗号不再切（避免一句话被拆成多次 TTS、语气拼缝）
+const MARKS = '。！？；\n';
+const MIN_LEN = 16; // 短于这个长度就与下文合并，攒够再发
+const MAX_LEN = 32; // 超过就强制切，避免无限等
+const FIRST_MIN_LEN = 10; // 首句快路径：短一点先起播，压低首声
+const FIRST_MARKS = `${MARKS}，,`; // 首句允许在逗号处断开
 
-/** 中文切句：到标点或到长度上限就切；force=true 时把残余也吐出来 */
-function splitSentences(text, force = false, maxLen = 24) {
+/**
+ * 中文切句：够长且遇到句末标点才切；force=true 时把残余也吐出来。
+ * first=true 时用更短的门槛并允许逗号断开（只用于一句里的第一段）。
+ */
+function splitSentences(text, force = false, first = false) {
+  const marks = first ? FIRST_MARKS : MARKS;
+  const minLen = first ? FIRST_MIN_LEN : MIN_LEN;
   const out = [];
   let buf = '';
   for (const ch of text) {
     buf += ch;
-    if (MARKS.includes(ch) || buf.length >= maxLen) {
+    const atMark = marks.includes(ch);
+    if ((atMark && buf.length >= minLen) || buf.length >= MAX_LEN) {
       out.push(buf);
       buf = '';
     }
   }
-  if (buf && (force || buf.length >= 8)) {
+  if (force && buf.trim()) {
     out.push(buf);
     buf = '';
   }
@@ -156,6 +167,7 @@ async function runTurn(opts) {
   // ---- LLM 流式 ----
   const messages = prompt && prompt.messages ? prompt.messages : [];
   let bodyStarted = false;
+  let firstEmitted = false;
 
   for await (const ev of llm.stream({
     baseUrl: providers.llm.baseUrl,
@@ -181,17 +193,18 @@ async function runTurn(opts) {
     bodyStarted = true;
     pending += ev.delta;
 
-    const { sentences, rest } = splitSentences(pending);
+    const { sentences, rest } = splitSentences(pending, false, !firstEmitted);
     pending = rest;
     for (const s of sentences) {
       await enqueueSentence(s);
+      firstEmitted = true;
       if (signal && signal.aborted) break;
     }
     if (signal && signal.aborted) break;
   }
 
   if (bodyStarted) {
-    for (const s of splitSentences(pending, true).sentences) {
+    for (const s of splitSentences(pending, true, !firstEmitted).sentences) {
       await enqueueSentence(s);
     }
   }
