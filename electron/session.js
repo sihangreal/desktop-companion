@@ -153,6 +153,14 @@ class SessionStore {
     }
   }
 
+  /** 最近一条记录的时间（用于判断人设是否比历史更新） */
+  lastTs() {
+    for (let i = this.turns.length - 1; i >= 0; i -= 1) {
+      if (this.turns[i].ts) return this.turns[i].ts;
+    }
+    return null;
+  }
+
   /** 最近 n 轮（一轮 = user + assistant），返回 [{role, content}] */
   recent(n = 12) {
     const records = this.turns.slice(-n * 2);

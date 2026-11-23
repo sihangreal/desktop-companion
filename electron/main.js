@@ -9,6 +9,7 @@ const store = require('./store');
 const logger = require('./logger');
 const engine = require('./engine');
 const { SessionStore, dateKey } = require('./session');
+const { PersonaStore } = require('./persona');
 const asrProvider = require('./providers/asr');
 
 // 三路默认配置；用户可在 data/config.json 的 providers 里逐项覆盖
@@ -393,8 +394,20 @@ ipcMain.handle('config:set', (_e, patch) => {
   };
 });
 
-ipcMain.handle('mode:set', (_e, mode) => {
-  applyMode(mode === 'desktop' ? 'desktop' : 'window');
+// 人设读写（保存后下一轮生效）
+ipcMain.handle('persona:get', () => (personaStore ? personaStore.get() : null));
+
+ipcMain.handle('persona:set', (_e, patch) => {
+  if (!personaStore) throw new Error('人设存储不可用');
+  return personaStore.set(patch || {});
+});
+
+ipcMain.handle('persona:reset', () => {
+  if (!personaStore) throw new Error('人设存储不可用');
+  return personaStore.reset();
+});
+
+ipcMain.handle('mode:set', (_e, mode) => {  applyMode(mode === 'desktop' ? 'desktop' : 'window');
   return config.mode;
 });
 
@@ -743,6 +756,7 @@ function speakable(s) {
 
 let currentTurnAbort = null;
 let sessionStore = null;
+let personaStore = null;
 
 async function chatTurnV2(userText) {
   const send = (type, payload) => {
@@ -762,6 +776,19 @@ async function chatTurnV2(userText) {
   const ctrl = new AbortController();
   currentTurnAbort = ctrl;
 
+  // 人设每轮现取，保存后下一轮立即生效（FR-331）
+  const persona = personaStore
+    ? personaStore.toSystemParts()
+    : { identity: PERSONA, constraints: '' };
+  const personaPrompt = [persona.identity, persona.constraints].filter(Boolean).join('\n\n');
+  // 人设比历史更新时，明确要求压过历史里的旧语气（否则模型会模仿旧回复）
+  const personaAt = persona.updatedAt ? new Date(persona.updatedAt).getTime() : 0;
+  const lastTs = sessionStore && sessionStore.lastTs ? sessionStore.lastTs() : null;
+  const personaFresh = !!(personaAt && lastTs && personaAt > new Date(lastTs).getTime());
+  const effectivePersona = personaFresh
+    ? `${personaPrompt}\n\n（角色设定刚刚更新：请严格按最新设定回复，忽略历史对话中的旧语气与旧身份。）`
+    : personaPrompt;
+  logger.log(`system 预览${personaFresh ? '（人设已更新）' : ''}: ` + effectivePersona.slice(0, 100).replace(/\n/g, ' / '));
   // 上下文来自会话记录；记录不可用时退回内存窗口
   const before = sessionStore ? sessionStore.recent(MAX_HISTORY_TURNS) : history.slice();
   const turnId = sessionStore ? sessionStore.reserveTurnId() : null;
@@ -775,7 +802,7 @@ async function chatTurnV2(userText) {
       userText,
       providers: prov,
       keys,
-      persona: PERSONA,
+      persona: effectivePersona,
       history: before,
       send,
       signal: ctrl.signal,
@@ -936,6 +963,19 @@ app.whenReady().then(() => {
   config = store.load(configPath);
   logger.log(`启动 v${app.getVersion()}  data=${userData}`);
   console.log(`[boot] v${app.getVersion()} data=${userData}`);
+
+  // 人设：用户可编辑，缺文件时用默认值
+  try {
+    personaStore = new PersonaStore({
+      file: path.join(userData, 'persona.json'),
+      log: (m) => logger.log(`[persona] ${m}`),
+    });
+    const p = personaStore.get();
+    logger.log(`人设就绪 name=${p.name} identity=${p.identity.length}字`);
+  } catch (e) {
+    personaStore = null;
+    logger.error(`人设初始化失败，用内置默认: ${e.message}`);
+  }
 
   // 会话记录：启动时清理过期文件，并载入当天上下文
   try {

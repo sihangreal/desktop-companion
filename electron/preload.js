@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld('companion', {
 
   // 模式：window / desktop
   setMode: (mode) => ipcRenderer.invoke('mode:set', mode),
+  getPersona: () => ipcRenderer.invoke('persona:get'),
+  setPersona: (patch) => ipcRenderer.invoke('persona:set', patch),
+  resetPersona: () => ipcRenderer.invoke('persona:reset'),
   toggleMode: () => ipcRenderer.invoke('mode:toggle'),
   onModeChanged: (cb) => {
     const handler = (_e, payload) => cb(payload);

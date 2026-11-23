@@ -617,10 +617,69 @@ body:not(.desktop-mode) #btn-clickthrough {
 
 .footer {
   display: flex;
-  gap: 6px;
-  margin-top: 10px;
+  gap: 6px;  margin-top: 10px;
 }
 
 .footer button {
   flex: 1 1 auto;
 }
+
+/* 人设编辑 */
+.persona-sec {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.persona-sec summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--dim);
+  list-style: none;
+  padding: 2px 0;
+  outline: none;
+}
+
+.persona-sec summary::-webkit-details-marker { display: none; }
+.persona-sec summary::before { content: '▸ '; }
+.persona-sec[open] summary::before { content: '▾ '; }
+
+.persona-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.persona-row input,
+.persona-sec textarea {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  padding: 5px 8px;
+  outline: none;
+}
+
+.persona-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.persona-sec textarea {
+  width: 100%;
+  margin-top: 6px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.persona-sec .hint {
+  font-size: 11px;
+  color: var(--dim);
+  align-self: center;
+}
+
+.persona-sec .hint.ok { color: var(--ok); }
+.persona-sec .hint.bad { color: var(--bad); }

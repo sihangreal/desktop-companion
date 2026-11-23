@@ -41,6 +41,18 @@ async function refresh() {
     if (info.hasKeys) {
       setText('v-mimokey', info.hasKeys.mimo ? '已保存（加密）' : '未设置', info.hasKeys.mimo ? 'ok' : 'bad');
     }
+    // 人设：只在首次加载时填充，避免覆盖用户正在编辑的内容
+    if (!personaLoaded) {
+      try {
+        const p = await window.companion.getPersona();
+        if (p) {
+          fillPersona(p);
+          personaLoaded = true;
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
     clickThrough = info.clickThrough;
     const btn = $('btn-clickthrough');
     if (btn) btn.textContent = `穿透：${clickThrough ? '开' : '关'}`;
@@ -113,6 +125,57 @@ $('btn-clear-mimo').onclick = async () => {
     console.error(err);
   }
 };
+
+// ---- 人设编辑 ----
+let personaLoaded = false;
+
+function fillPersona(p) {
+  const nameEl = $('in-persona-name');
+  const idEl = $('in-persona-identity');
+  const cEl = $('in-persona-constraints');
+  if (nameEl) nameEl.value = p.name || '';
+  if (idEl) idEl.value = p.identity || '';
+  if (cEl) cEl.value = p.constraints || '';
+}
+
+function setPersonaHint(text, kind) {
+  const el = $('persona-hint');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'hint' + (kind ? ` ${kind}` : '');
+}
+
+const btnSavePersona = $('btn-save-persona');
+if (btnSavePersona) {
+  btnSavePersona.onclick = async () => {
+    try {
+      const p = await window.companion.setPersona({
+        name: $('in-persona-name').value,
+        identity: $('in-persona-identity').value,
+        constraints: $('in-persona-constraints').value,
+      });
+      fillPersona(p);
+      personaLoaded = true;
+      setPersonaHint('已保存，下一轮生效', 'ok');
+    } catch (e) {
+      setPersonaHint(String(e && e.message ? e.message : e), 'bad');
+    }
+  };
+}
+
+const btnResetPersona = $('btn-reset-persona');
+if (btnResetPersona) {
+  btnResetPersona.onclick = async () => {
+    try {
+      const p = await window.companion.resetPersona();
+      fillPersona(p);
+      personaLoaded = true;
+      setPersonaHint('已恢复默认', 'ok');
+    } catch (e) {
+      setPersonaHint(String(e && e.message ? e.message : e), 'bad');
+    }
+  };
+}
 
 $('btn-clickthrough').onclick = async () => {
   const next = await window.companion.setClickThrough(!clickThrough);

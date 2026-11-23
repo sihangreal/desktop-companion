@@ -93,6 +93,31 @@
         <button id="btn-clear-mimo" class="ghost">清除</button>
       </div>
 
+      <details class="persona-sec" id="persona-sec">
+        <summary>人设（可编辑）</summary>
+        <div class="persona-row">
+          <span class="k">名字</span>
+          <input id="in-persona-name" type="text" maxlength="20" placeholder="小夜" />
+        </div>
+        <textarea
+          id="in-persona-identity"
+          rows="3"
+          maxlength="800"
+          placeholder="身份描述：她是谁、和你是什么关系"
+        ></textarea>
+        <textarea
+          id="in-persona-constraints"
+          rows="4"
+          maxlength="600"
+          placeholder="说话约束：语气、长度、格式要求"
+        ></textarea>
+        <div class="keyrow">
+          <button id="btn-save-persona">保存人设</button>
+          <button id="btn-reset-persona" class="ghost">恢复默认</button>
+          <span class="hint" id="persona-hint"></span>
+        </div>
+      </details>
+
       <div class="footer">
         <button id="btn-mic">聆听：开</button>
         <button id="btn-wardrobe">衣橱</button>
