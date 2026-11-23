@@ -11,6 +11,8 @@ const engine = require('./engine');
 const { SessionStore, dateKey } = require('./session');
 const { PersonaStore } = require('./persona');
 const promptBuilder = require('./prompt');
+const { MemoryStore } = require('./memory');
+const memoryJob = require('./memory-job');
 const asrProvider = require('./providers/asr');
 
 // 三路默认配置；用户可在 data/config.json 的 providers 里逐项覆盖
@@ -758,6 +760,33 @@ function speakable(s) {
 let currentTurnAbort = null;
 let sessionStore = null;
 let personaStore = null;
+let memoryStore = null;
+
+// 记忆任务：把溢出窗口的轮次压成摘要，并抽取长期事实
+function scheduleMemoryJob(prov, keys) {
+  if (!sessionStore || !memoryStore || !keys.llm) return;
+  if (config.recordPaused) return;
+
+  const turns = sessionStore.overflowTurns(MAX_HISTORY_TURNS);
+  if (!turns.length) return;
+
+  const oldSummary = sessionStore.meta().summary;
+  memoryJob
+    .run({
+      turns,
+      oldSummary,
+      providers: prov,
+      apiKey: keys.llm,
+      model: prov.llm.model,
+      memory: memoryStore,
+      session: sessionStore,
+      log: (m) => logger.log(`[memory] ${m}`),
+    })
+    .then((r) => {
+      if (r && r.ok) logger.log(`[memory] 完成 ${turns.length} 条 → 摘要${r.summary ? '更新' : '不变'} 事实+${r.facts || 0}`);
+    })
+    .catch((e) => logger.error(`[memory] 异常: ${e.message}`));
+}
 
 async function chatTurnV2(userText) {
   const send = (type, payload) => {
@@ -799,12 +828,18 @@ async function chatTurnV2(userText) {
     before = history.slice();
   }
 
-  // 四段 system + 预算裁剪（摘要与事实在 S4 接入，这里先留空）
+  // 四段 system + 预算裁剪
+  const facts = memoryStore ? memoryStore.facts() : [];
+  const dayMeta = sessionStore ? sessionStore.meta() : { summary: '', summarizedThrough: null };
+  // 当天第一条之前，把昨天的摘要带进来（FR-318）
+  const isFirstToday = sessionStore ? sessionStore.turns.length === 0 : false;
+  const yesterdaySummary = isFirstToday && sessionStore ? sessionStore.previousSummary() : null;
+
   const built = promptBuilder.build({
     persona,
-    facts: [],
-    summary: '',
-    yesterdaySummary: '',
+    facts,
+    summary: dayMeta.summary,
+    yesterdaySummary,
     recent: before,
     userText,
     newChapter: personaFresh,
@@ -852,6 +887,10 @@ async function chatTurnV2(userText) {
       `对话完成(v2) 首token ${r.timings.firstTokenMs}ms 首声 ${r.timings.firstAudioMs}ms 总 ${r.timings.totalMs}ms 情绪 ${r.emotion} 字数 ${r.speakText.length}`
     );
     send('done', { emotion: r.emotion, totalMs: r.timings.totalMs, text: r.text });
+
+    // 记忆任务：异步，不阻塞本轮（FR-316、T-410）
+    scheduleMemoryJob(prov, keys);
+
     return { ...r.timings, emotion: r.emotion, text: r.text };
   } catch (e) {
     logger.error(`对话失败(v2): ${e.message}`);
@@ -996,6 +1035,18 @@ app.whenReady().then(() => {
   } catch (e) {
     personaStore = null;
     logger.error(`人设初始化失败，用内置默认: ${e.message}`);
+  }
+
+  // 长期记忆：结构化事实，跨天保留
+  try {
+    memoryStore = new MemoryStore({
+      file: path.join(userData, 'memory.json'),
+      log: (m) => logger.log(`[memory] ${m}`),
+    });
+    logger.log(`记忆就绪 ${memoryStore.facts().length} 条`);
+  } catch (e) {
+    memoryStore = null;
+    logger.error(`记忆初始化失败: ${e.message}`);
   }
 
   // 会话记录：启动时清理过期文件，并载入当天上下文

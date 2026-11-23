@@ -230,6 +230,66 @@ class SessionStore {
     return { removed };
   }
 
+  /** 当天摘要游标（缺失时返回空摘要） */
+  meta(date = this.date) {
+    try {
+      const data = JSON.parse(fs.readFileSync(this.metaFile(date), 'utf8'));
+      return {
+        summary: String(data.summary || ''),
+        summarizedThrough: data.summarizedThrough || null,
+        updatedAt: data.updatedAt || null,
+      };
+    } catch {
+      return { summary: '', summarizedThrough: null, updatedAt: null };
+    }
+  }
+
+  setMeta(patch = {}, date = this.date) {
+    const cur = this.meta(date);
+    const next = {
+      date,
+      summary: patch.summary !== undefined ? String(patch.summary) : cur.summary,
+      summarizedThrough:
+        patch.summarizedThrough !== undefined ? patch.summarizedThrough : cur.summarizedThrough,
+      updatedAt: isoLocal(),
+    };
+    const file = this.metaFile(date);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = `${file}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8');
+    fs.renameSync(tmp, file);
+    return next;
+  }
+
+  /** 前一天摘要，跨天带入（FR-318） */
+  previousSummary(now = new Date()) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    d.setDate(d.getDate() - 1);
+    const prev = dateKey(d);
+    if (!fs.existsSync(this.metaFile(prev))) return null;
+    const m = this.meta(prev);
+    return m.summary || null;
+  }
+
+  /**
+   * 已被挤出窗口、但尚未并入摘要的轮次（FR-314）
+   * @param {number} windowTurns 窗口保留多少轮
+   */
+  overflowTurns(windowTurns = 12) {
+    const keep = windowTurns * 2;
+    const cutoff = this.turns.length - keep;
+    if (cutoff <= 0) return [];
+
+    const meta = this.meta();
+    let start = 0;
+    if (meta.summarizedThrough) {
+      const idx = this.turns.findIndex((t) => t.turnId === meta.summarizedThrough);
+      if (idx >= 0) start = idx + 1;
+    }
+    if (start >= cutoff) return [];
+    return this.turns.slice(start, cutoff);
+  }
+
   /** 当天统计（S5 使用，先提供） */
   stats() {
     const userTurns = this.turns.filter((r) => r.role === 'user').length;

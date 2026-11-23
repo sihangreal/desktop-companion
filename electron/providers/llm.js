@@ -113,4 +113,41 @@ async function* stream(opts) {
   if (!headDone && pending) yield { delta: pending };
 }
 
-module.exports = { stream, DEFAULT_PERSONA, DEFAULT_STYLE };
+/** 非流式一次生成（记忆任务用） */
+async function complete(opts) {
+  const {
+    baseUrl,
+    apiKey,
+    model,
+    system,
+    prompt,
+    maxTokens = 400,
+    temperature = 0.2,
+    signal,
+  } = opts;
+
+  const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [
+        ...(system ? [{ role: 'system', content: system }] : []),
+        { role: 'user', content: prompt },
+      ],
+      stream: false,
+      max_tokens: maxTokens,
+      temperature,
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    const body = (await res.text()).slice(0, 200);
+    throw new Error(`LLM ${res.status}: ${body}`);
+  }
+  const j = await res.json();
+  return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
+}
+
+module.exports = { stream, complete, DEFAULT_PERSONA, DEFAULT_STYLE };

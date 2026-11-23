@@ -57,17 +57,17 @@
 
 ## S4 · 摘要与长期记忆（`memory.js` + `memory-job.js`）
 
-- [ ] T-401 `memory.facts()` / `merge()`：白名单 key、去重、置信度门槛 0.6（FR-320、FR-323）
-- [ ] T-402 上限 20 条，超出按 confidence 升序淘汰（§3.4）
-- [ ] T-403 `memory.clear()`（FR-312）
-- [ ] T-404 窗口溢出检测：>12 轮时收集被挤出的轮次（FR-314）
-- [ ] T-405 `memory-job`：一次调用同时产出 summary 与 facts，严格 JSON 解析（§3.2）
-- [ ] T-406 无溢出时 summary 为 null，只更新 facts（§3.2）
-- [ ] T-407 续写 `meta.json` 的 summary 与 summarizedThrough（FR-317）
-- [ ] T-408 超时 10s 放弃、失败保留旧值（FR-316、§7）
-- [ ] T-409 跨天：读取前一天 meta.summary 作为昨日摘要（FR-318、D-301）
-- [ ] T-410 异步执行，不 await，不阻塞 `done`（FR-316、NFR-305）
-- [ ] T-411 单元测试：合并冲突、超限淘汰、非法 JSON（§6）
+- [x] T-401 `memory.facts()` / `merge()`：白名单 key、去重、置信度门槛 0.6（FR-320、FR-323）
+- [x] T-402 上限 20 条，超出按 confidence 升序淘汰（§3.4）
+- [x] T-403 `memory.clear()`（FR-312）
+- [x] T-404 窗口溢出检测：>12 轮时收集被挤出的轮次（FR-314）
+- [x] T-405 `memory-job`：一次调用同时产出 summary 与 facts，严格 JSON 解析（§3.2）
+- [x] T-406 无溢出时 summary 为 null，只更新 facts（§3.2）
+- [x] T-407 续写 `meta.json` 的 summary 与 summarizedThrough（FR-317）
+- [x] T-408 超时 10s 放弃、失败保留旧值（FR-316、§7）
+- [x] T-409 跨天：读取前一天 meta.summary 作为昨日摘要（FR-318、D-301）
+- [x] T-410 异步执行，不 await，不阻塞 `done`（FR-316、NFR-305）
+- [x] T-411 单元测试：合并冲突、超限淘汰、非法 JSON（§6）
 
 **DoD**：聊 20 轮 → 问第 1 轮内容 → 她能答上（摘要形式）；说"我叫阿哲"→ 10 轮后仍记得。
 

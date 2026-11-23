@@ -11,6 +11,7 @@ const path = require('node:path');
 const { build, est, BUDGET } = require('../electron/prompt');
 const { SessionStore, dateKey } = require('../electron/session');
 const { PersonaStore } = require('../electron/persona');
+const { MemoryStore, MAX_FACTS } = require('../electron/memory');
 
 let passed = 0;
 let failed = 0;
@@ -178,5 +179,149 @@ test('损坏文件回退默认', () => {
   assert.strictEqual(new PersonaStore({ file, log: () => {} }).get().name, '小夜');
 });
 
-console.log(`\n结果：${passed} 通过，${failed} 失败\n`);
-process.exit(failed ? 1 : 0);
+console.log('\n[memory]');
+
+test('单值 key：低置信度不覆盖，高置信度覆盖', () => {
+  const file = path.join(tmpDir('mem'), 'memory.json');
+  const m = new MemoryStore({ file, log: () => {} });
+  m.merge([{ key: 'user.name', value: '阿哲', confidence: 0.9 }]);
+  m.merge([{ key: 'user.name', value: '老王', confidence: 0.5 }]);
+  assert.strictEqual(m.facts().find((f) => f.key === 'user.name').value, '阿哲');
+  m.merge([{ key: 'user.name', value: '老王', confidence: 0.9 }]);
+  assert.strictEqual(m.facts().find((f) => f.key === 'user.name').value, '老王');
+});
+
+test('多值 key：累加、去重、同 key 上限 4', () => {
+  const file = path.join(tmpDir('mem2'), 'memory.json');
+  const m = new MemoryStore({ file, log: () => {} });
+  m.merge([
+    { key: 'user.like', value: '喝茶', confidence: 0.8 },
+    { key: 'user.like', value: '猫', confidence: 0.8 },
+  ]);
+  assert.deepStrictEqual(
+    m.facts().filter((f) => f.key === 'user.like').map((f) => f.value).sort(),
+    ['喝茶', '猫'].sort()
+  );
+  m.merge([{ key: 'user.like', value: '喝茶', confidence: 0.9 }]);
+  assert.strictEqual(m.facts().filter((f) => f.key === 'user.like').length, 2);
+
+  const many = Array.from({ length: 10 }, (_, i) => ({
+    key: 'user.event',
+    value: `事件${i}`,
+    confidence: 0.3 + i * 0.05,
+  }));
+  m.merge(many);
+  assert.strictEqual(m.facts().filter((f) => f.key === 'user.event').length, 4);
+});
+
+test('白名单外被忽略，总量不超上限', () => {
+  const file = path.join(tmpDir('mem3'), 'memory.json');
+  const m = new MemoryStore({ file, log: () => {} });
+  m.merge([{ key: 'user.unknown', value: 'x', confidence: 0.9 }]);
+  assert.strictEqual(m.facts().length, 0);
+
+  const lots = Array.from({ length: 30 }, (_, i) => ({
+    key: ['user.like', 'user.dislike', 'user.event'][i % 3],
+    value: `v${i}`,
+    confidence: 0.5,
+  }));
+  m.merge(lots);
+  assert.ok(m.facts().length <= MAX_FACTS, `facts=${m.facts().length}`);
+});
+
+console.log('\n[memory-job]');
+
+async function asyncTest(name, fn) {
+  try {
+    await fn();
+    passed += 1;
+    console.log(`  ✓ ${name}`);
+  } catch (e) {
+    failed += 1;
+    console.log(`  ✗ ${name}\n    ${e.message}`);
+  }
+}
+
+(async () => {
+  const llm = require('../electron/providers/llm');
+  const memoryJob = require('../electron/memory-job');
+  const originalComplete = llm.complete;
+
+  await asyncTest('正常返回：写入摘要与事实', async () => {
+    const dir = tmpDir('job');
+    const session = new SessionStore({ dir, log: () => {} });
+    session.open(dateKey());
+    session.append({ turnId: 't_1', role: 'user', text: '我叫阿哲' });
+    session.append({ turnId: 't_1', role: 'assistant', text: '记住啦' });
+    const memory = new MemoryStore({ file: path.join(dir, 'memory.json'), log: () => {} });
+
+    llm.complete = async () =>
+      JSON.stringify({ summary: '用户叫阿哲。', facts: [{ key: 'user.name', value: '阿哲', confidence: 0.9 }] });
+
+    const r = await memoryJob.run({
+      turns: session.turns.slice(),
+      oldSummary: '',
+      providers: { llm: { baseUrl: 'x', model: 'm' } },
+      apiKey: 'k',
+      memory,
+      session,
+      log: () => {},
+    });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(session.meta().summary, '用户叫阿哲。');
+    assert.strictEqual(memory.facts().length, 1);
+  });
+
+  await asyncTest('非法 JSON：不覆盖旧摘要', async () => {
+    const dir = tmpDir('job2');
+    const session = new SessionStore({ dir, log: () => {} });
+    session.open(dateKey());
+    session.setMeta({ summary: '旧摘要' });
+    session.append({ turnId: 't_1', role: 'user', text: '嗨' });
+    const memory = new MemoryStore({ file: path.join(dir, 'memory.json'), log: () => {} });
+
+    llm.complete = async () => '这不是 JSON';
+    const r = await memoryJob.run({
+      turns: session.turns.slice(),
+      oldSummary: '旧摘要',
+      providers: { llm: { baseUrl: 'x', model: 'm' } },
+      apiKey: 'k',
+      memory,
+      session,
+      log: () => {},
+    });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(session.meta().summary, '旧摘要');
+  });
+
+  await asyncTest('超时：放弃并保留旧值', async () => {
+    const dir = tmpDir('job3');
+    const session = new SessionStore({ dir, log: () => {} });
+    session.open(dateKey());
+    session.append({ turnId: 't_1', role: 'user', text: '嗨' });
+    const memory = new MemoryStore({ file: path.join(dir, 'memory.json'), log: () => {} });
+
+    llm.complete = async (o) =>
+      new Promise((_, reject) => {
+        if (o.signal) o.signal.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+    const r = await memoryJob.run({
+      turns: session.turns.slice(),
+      oldSummary: '',
+      providers: { llm: { baseUrl: 'x', model: 'm' } },
+      apiKey: 'k',
+      memory,
+      session,
+      log: () => {},
+      timeoutMs: 200,
+    });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.reason, 'timeout');
+  });
+
+  llm.complete = originalComplete;
+
+  console.log(`\n结果：${passed} 通过，${failed} 失败\n`);
+  process.exit(failed ? 1 : 0);
+})();
+
