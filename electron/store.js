@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DEFAULTS = {
-  window: { x: null, y: null, width: 480, height: 720 },
+  window: { x: null, y: null, width: 900, height: 700 },
   mode: 'window',
   volume: 70,
   muted: false,

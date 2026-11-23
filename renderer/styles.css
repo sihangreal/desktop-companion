@@ -98,6 +98,7 @@ button.ghost {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: 84% 45%;
   opacity: 0;
   transition: opacity 250ms ease;
   pointer-events: none;
@@ -544,6 +545,43 @@ body:not(.desktop-mode) #btn-clickthrough {
   padding: 12px;
   font-size: 12px;
   line-height: 1.9;
+}
+
+/* 窗口模式：设置面板放在左侧，视频占满右侧（不再压在画面下面） */
+body:not(.desktop-mode) {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-rows: 40px minmax(0, 1fr);
+  grid-template-areas:
+    'panel titlebar'
+    'panel stage';
+}
+
+body:not(.desktop-mode) .titlebar {
+  grid-area: titlebar;
+  border-radius: 0 14px 0 0;
+}
+
+body:not(.desktop-mode) .stage {
+  grid-area: stage;
+  border-radius: 0 0 14px 0;
+}
+
+body:not(.desktop-mode) .panel {
+  grid-area: panel;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-top: none;
+  border-right: 1px solid var(--line);
+  border-radius: 14px 0 0 14px;
+}
+
+body:not(.desktop-mode) .panel .footer {
+  margin-top: auto;
+  padding-top: 10px;
 }
 
 .row {
