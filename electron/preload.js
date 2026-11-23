@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('companion', {
   // M3：衣橱
   listLooks: () => ipcRenderer.invoke('looks:list'),
   setLook: (id) => ipcRenderer.invoke('look:set', id),
+  removeLook: (id, deleteFiles) => ipcRenderer.invoke('look:remove', { id, deleteFiles: !!deleteFiles }),
   setConfig: (patch) => ipcRenderer.invoke('config:set', patch),
 
   // 模式：window / desktop

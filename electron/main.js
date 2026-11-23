@@ -12,6 +12,7 @@ const { SessionStore, dateKey } = require('./session');
 const { PersonaStore } = require('./persona');
 const promptBuilder = require('./prompt');
 const { MemoryStore } = require('./memory');
+const { removeLook } = require('./looks-admin');
 const memoryJob = require('./memory-job');
 const asrProvider = require('./providers/asr');
 
@@ -440,6 +441,29 @@ ipcMain.handle('session:clearAll', () => {
   if (memoryStore) memoryStore.clear();
   logger.log(`清空全部记录：删除 ${removed} 个会话文件，记忆已清空`);
   return { removed };
+});
+
+// 移除装扮：只移除引用，或连同文件删除
+ipcMain.handle('look:remove', (_e, payload) => {
+  const id = payload && payload.id;
+  const deleteFiles = !!(payload && payload.deleteFiles);
+  const m = loadLooks();
+  const allowedRoots = [
+    path.join(ROOT, 'assets'),
+    m.source || '',
+    'D:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\431960',
+  ].filter(Boolean);
+
+  const r = removeLook({
+    manifestPath: looksPath(),
+    id,
+    deleteFiles,
+    allowedRoots,
+    log: (x) => logger.log(`[looks] ${x}`),
+  });
+
+  looksCache = null; // 下次访问重新读盘
+  return r;
 });
 
 ipcMain.handle('mode:set', (_e, mode) => {  applyMode(mode === 'desktop' ? 'desktop' : 'window');

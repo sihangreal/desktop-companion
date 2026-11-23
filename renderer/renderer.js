@@ -920,7 +920,7 @@ function renderPage() {
     item.className = 'wardrobe-item' + (look.id === currentLookId ? ' active' : '');
     item.dataset.id = look.id;
     const faved = favorites.has(look.id);
-    item.innerHTML = `<img src="${look.coverUrl || ''}" alt="${look.name}" loading="lazy" style="object-position:${look.coverPos || '84% 20%'}" /><span>${look.short || look.name}</span><button class="fav${faved ? ' on' : ''}" title="收藏">♥</button>`;
+    item.innerHTML = `<img src="${look.coverUrl || ''}" alt="${look.name}" loading="lazy" style="object-position:${look.coverPos || '84% 20%'}" /><span>${look.short || look.name}</span><button class="fav${faved ? ' on' : ''}" title="收藏">♥</button><button class="del" title="移除这套">×</button>`;
     item.onclick = () => {
       window.companion.uiLog(`click look ${look.id} ${look.name}`);
       applyLook(look.id, false);
@@ -932,6 +932,13 @@ function renderPage() {
       favBtn.onclick = (ev) => {
         ev.stopPropagation();
         toggleFavorite(look.id);
+      };
+    }
+    const delBtn = item.querySelector('.del');
+    if (delBtn) {
+      delBtn.onclick = (ev) => {
+        ev.stopPropagation();
+        askRemoveLook(look);
       };
     }
     grid.appendChild(item);
@@ -1130,8 +1137,7 @@ setInterval(() => {
   }
 }, 10000);
 
-function toggleFavorite(id) {
-  if (favorites.has(id)) favorites.delete(id);
+function toggleFavorite(id) {  if (favorites.has(id)) favorites.delete(id);
   else favorites.add(id);
   saveSettings({ favorites: [...favorites] });
   window.companion.uiLog(`favorite ${id} -> ${favorites.has(id)} total=${favorites.size}`);
@@ -1140,6 +1146,28 @@ function toggleFavorite(id) {
 }
 
 $('btn-random').onclick = () => pickRandom();
+
+// 移除装扮弹层
+const delRefBtn = $('del-ref');
+if (delRefBtn) delRefBtn.onclick = () => doRemoveLook(false);
+const delFileBtn = $('del-file');
+if (delFileBtn) delFileBtn.onclick = () => doRemoveLook(true);
+const delCancelBtn = $('del-cancel');
+if (delCancelBtn) {
+  delCancelBtn.onclick = () => {
+    pendingRemove = null;
+    $('del-dialog').classList.add('hidden');
+  };
+}
+const delDialogEl = $('del-dialog');
+if (delDialogEl) {
+  delDialogEl.onclick = (e) => {
+    if (e.target === delDialogEl) {
+      pendingRemove = null;
+      delDialogEl.classList.add('hidden');
+    }
+  };
+}
 
 $('sel-mode').onchange = (e) => {
   playMode = e.target.value;

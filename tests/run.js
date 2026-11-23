@@ -12,6 +12,7 @@ const { build, est, BUDGET } = require('../electron/prompt');
 const { SessionStore, dateKey } = require('../electron/session');
 const { PersonaStore } = require('../electron/persona');
 const { MemoryStore, MAX_FACTS } = require('../electron/memory');
+const { removeLook } = require('../electron/looks-admin');
 
 let passed = 0;
 let failed = 0;
@@ -234,6 +235,70 @@ test('增量输入：未成句的部分留在 rest', () => {
   const r2 = splitSentences(r1.rest + '遇到什么开心的事情？', false, false);
   assert.strictEqual(r2.sentences.length, 1);
   assert.strictEqual(r2.rest, '');
+});
+
+console.log('\n[looks]');
+
+test('仅移除引用：文件保留', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'looks-'));
+  const video = path.join(dir, 'a.webm');
+  const cover = path.join(dir, 'a.jpg');
+  fs.writeFileSync(video, 'v');
+  fs.writeFileSync(cover, 'c');
+  const manifest = path.join(dir, 'looks.json');
+  fs.writeFileSync(
+    manifest,
+    JSON.stringify({ source: dir, count: 1, looks: [{ id: 'a', name: 'A', video, cover }] })
+  );
+
+  const r = removeLook({ manifestPath: manifest, id: 'a', deleteFiles: false, allowedRoots: [dir] });
+  assert.strictEqual(r.remaining, 0);
+  assert.strictEqual(fs.existsSync(video), true);
+  assert.strictEqual(fs.existsSync(cover), true);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('完全删除：范围内文件被删，范围外跳过', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'looks2-'));
+  const inside = path.join(dir, 'in.webm');
+  const outside = path.join(os.tmpdir(), `outside-${Date.now()}.txt`);
+  fs.writeFileSync(inside, 'v');
+  fs.writeFileSync(outside, 'x');
+  const manifest = path.join(dir, 'looks.json');
+  fs.writeFileSync(
+    manifest,
+    JSON.stringify({
+      source: dir,
+      count: 2,
+      looks: [
+        { id: 'in', name: 'In', video: inside },
+        { id: 'out', name: 'Out', video: outside },
+      ],
+    })
+  );
+
+  const r1 = removeLook({ manifestPath: manifest, id: 'in', deleteFiles: true, allowedRoots: [dir] });
+  assert.strictEqual(r1.deleted.length, 1);
+  assert.strictEqual(fs.existsSync(inside), false);
+
+  const r2 = removeLook({ manifestPath: manifest, id: 'out', deleteFiles: true, allowedRoots: [dir] });
+  assert.strictEqual(r2.deleted.length, 0);
+  assert.strictEqual(r2.skipped.length, 1);
+  assert.strictEqual(fs.existsSync(outside), true);
+
+  fs.unlinkSync(outside);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('移除不存在的装扮会报错', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'looks3-'));
+  const manifest = path.join(dir, 'looks.json');
+  fs.writeFileSync(manifest, JSON.stringify({ count: 0, looks: [] }));
+  assert.throws(
+    () => removeLook({ manifestPath: manifest, id: 'nope', allowedRoots: [dir] }),
+    /找不到装扮/
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 console.log('\n[memory]');

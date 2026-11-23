@@ -721,3 +721,84 @@ body:not(.desktop-mode) .panel .footer {
 
 .persona-sec .hint.ok { color: var(--ok); }
 .persona-sec .hint.bad { color: var(--bad); }
+
+/* 移除装扮：卡片上的 × 与确认弹层 */
+.wardrobe-item .del {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.42;
+  transition: opacity 140ms ease, background 140ms ease;
+  z-index: 3;
+}
+
+.wardrobe-item:hover .del {
+  opacity: 1;
+}
+
+.wardrobe-item .del:hover {
+  background: var(--bad);
+  border-color: var(--bad);
+}
+
+.del-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.del-dialog.hidden {
+  display: none;
+}
+
+.del-box {
+  width: min(430px, 88vw);
+  background: #1c1c22;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.del-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.del-desc {
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--dim);
+}
+
+.del-desc b {
+  color: var(--text);
+}
+
+.del-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.del-actions button {
+  flex: 1 1 auto;
+}
+
+.del-actions #del-file {
+  border-color: var(--bad);
+  color: var(--bad);
+}
