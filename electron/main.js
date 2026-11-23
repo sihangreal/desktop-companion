@@ -822,6 +822,12 @@ function scheduleMemoryJob(prov, keys) {
 
 async function chatTurnV2(userText) {
   const send = (type, payload) => {
+    // 观测：逐句 TTS 统计落盘，便于分析切句策略效果
+    if (type === 'tts.stat') {
+      logger.log(
+        `tts.stat seq=${payload.seq} 字数=${payload.len} 首包=${payload.firstMs}ms 合成=${payload.totalMs}ms 音频=${payload.ms}ms`
+      );
+    }
     if (win && !win.isDestroyed()) win.webContents.send('reply:event', { type, ...payload });
   };
 
