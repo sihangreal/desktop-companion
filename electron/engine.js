@@ -209,6 +209,9 @@ async function runTurn(opts) {
     }
   }
 
+  // LLM 流结束时刻：用于把「LLM 阶段」与「TTS 阶段」分开统计
+  const llmDoneMs = Date.now() - t0;
+
   await Promise.all(tasks);
 
   const totalMs = Date.now() - t0;
@@ -219,6 +222,7 @@ async function runTurn(opts) {
     timings: {
       firstTokenMs,
       firstAudioMs,
+      llmDoneMs,
       totalMs,
       audioMs: Math.round(audioBytes / 48), // 24kHz * 2 字节 = 48 字节/毫秒
     },

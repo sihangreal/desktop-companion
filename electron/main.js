@@ -947,7 +947,7 @@ async function chatTurnV2(userText) {
     }
 
     logger.log(
-      `对话完成(v2) 首token ${r.timings.firstTokenMs}ms 首声 ${r.timings.firstAudioMs}ms 总 ${r.timings.totalMs}ms 情绪 ${r.emotion} 字数 ${r.speakText.length}`
+      `对话完成(v2) 首token ${r.timings.firstTokenMs}ms llm完 ${r.timings.llmDoneMs}ms 首声 ${r.timings.firstAudioMs}ms 合成完 ${r.timings.totalMs}ms 音频 ${r.timings.audioMs}ms 情绪 ${r.emotion} 字数 ${r.speakText.length}`
     );
     send('done', { emotion: r.emotion, totalMs: r.timings.totalMs, text: r.text });
 
@@ -1145,6 +1145,54 @@ app.whenReady().then(() => {
   // 全屏 / 窗口切换
   const modeKey = globalShortcut.register('Control+Shift+M', toggleMode);
   logger.log(`热键 Ctrl+Shift+M 注册${modeKey ? '成功' : '失败'}`);
+
+  // 自动化冒烟：DC_UI_TEST=bench 用现成 WAV 反复测 ASR 耗时
+  if (process.env.DC_UI_TEST === 'bench') {
+    setTimeout(async () => {
+      try {
+        const prov = providerConfig();
+        const key = getKey(prov.asr.keyRef || 'deepseek');
+        const wavPath = path.join(userData, 'selftest-reply.wav');
+        if (!fs.existsSync(wavPath)) throw new Error('缺少 bench 音频 ' + wavPath);
+
+        const buf = fs.readFileSync(wavPath);
+        const pcm24 = buf.subarray(44); // 24kHz mono 16bit
+        const n24 = Math.floor(pcm24.length / 2);
+        const n16 = Math.floor((n24 * 2) / 3);
+        const pcm16k = Buffer.alloc(n16 * 2);
+        for (let i = 0; i < n16; i += 1) {
+          const src = i * 1.5;
+          const i0 = Math.floor(src);
+          const frac = src - i0;
+          const a = pcm24.readInt16LE(i0 * 2);
+          const b = i0 + 1 < n24 ? pcm24.readInt16LE((i0 + 1) * 2) : a;
+          pcm16k.writeInt16LE(Math.round(a + (b - a) * frac), i * 2);
+        }
+        logger.log(`[bench] ASR 基准开始，音频 ${(n16 / 16000).toFixed(2)}s`);
+
+        for (let i = 0; i < 5; i += 1) {
+          const t = Date.now();
+          try {
+            const r = await asrProvider.transcribe({
+              kind: prov.asr.kind,
+              baseUrl: prov.asr.baseUrl,
+              apiKey: key,
+              model: prov.asr.model,
+              language: prov.asr.language,
+              pcm: pcm16k,
+            });
+            logger.log(`[bench] asr #${i + 1} ${Date.now() - t}ms text=${r.text.slice(0, 40)}`);
+          } catch (e) {
+            logger.log(`[bench] asr #${i + 1} FAIL ${e.message}`);
+          }
+          await new Promise((r) => setTimeout(r, 300));
+        }
+        logger.log('[bench] ASR 完成');
+      } catch (e) {
+        logger.error(`[bench] 失败: ${e.message}`);
+      }
+    }, 4000);
+  }
 
   // 自动化冒烟：DC_UI_TEST=del 点开衣橱并点击第一张封面的删除按钮，检查弹层是否可见
   if (process.env.DC_UI_TEST === 'del') {
