@@ -56,7 +56,10 @@ async function* stream(opts) {
     maxTokens = 220,
     temperature = 1.05,
     signal,
+    timing,
   } = opts;
+
+  if (timing) timing.requestAt = Date.now();
 
   const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
     method: 'POST',
@@ -70,6 +73,8 @@ async function* stream(opts) {
     }),
     signal,
   });
+
+  if (timing) timing.ttfbAt = Date.now();
 
   if (!res.ok) {
     const body = (await res.text()).slice(0, 200);
@@ -85,6 +90,7 @@ async function* stream(opts) {
     const delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
     const text = delta && delta.content;
     if (!text) continue;
+    if (timing && !timing.firstDataAt) timing.firstDataAt = Date.now();
 
     if (!headDone) {
       pending += text;
@@ -111,6 +117,7 @@ async function* stream(opts) {
 
   // 全是首行、没出现换行的情况
   if (!headDone && pending) yield { delta: pending };
+  if (timing) timing.doneAt = Date.now();
 }
 
 /** 非流式一次生成（记忆任务用） */

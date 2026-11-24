@@ -8,7 +8,8 @@
 const { readSse } = require('./sse');
 
 async function* synthMimo(opts) {
-  const { baseUrl, apiKey, model, voice, text, style, signal } = opts;
+  const { baseUrl, apiKey, model, voice, text, style, signal, timing } = opts;
+  if (timing) timing.requestAt = Date.now();
   const content = style ? `(${style})${text}` : text;
 
   const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
@@ -23,6 +24,8 @@ async function* synthMimo(opts) {
     signal,
   });
 
+  if (timing) timing.ttfbAt = Date.now();
+
   if (!res.ok) {
     const body = (await res.text()).slice(0, 200);
     const err = new Error(`MiMo TTS ${res.status}: ${body}`);
@@ -33,8 +36,12 @@ async function* synthMimo(opts) {
   for await (const chunk of readSse(res, signal)) {
     const delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
     const b64 = delta && delta.audio && delta.audio.data;
-    if (b64) yield Buffer.from(b64, 'base64');
+    if (b64) {
+      if (timing && !timing.firstDataAt) timing.firstDataAt = Date.now();
+      yield Buffer.from(b64, 'base64');
+    }
   }
+  if (timing) timing.doneAt = Date.now();
 }
 
 async function* synthDeepseek(opts) {

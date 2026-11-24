@@ -67,6 +67,10 @@ async function runTurn(opts) {
   } = opts;
 
   const t0 = Date.now();
+  const llmTiming = {};
+  let splitCpuMs = 0;
+  let speakCpuMs = 0;
+  const firstTtsTiming = {};
   let firstTokenMs = 0;
   let firstAudioMs = 0;
   let audioBytes = 0;
@@ -103,6 +107,7 @@ async function runTurn(opts) {
     const tStart = Date.now();
     let firstChunkMs = 0;
     let bytes = 0;
+    const ttsTiming = {};
     try {
       const it = tts.synth({
         kind: providers.tts.kind,
@@ -113,6 +118,7 @@ async function runTurn(opts) {
         text: sentence,
         style: styleOf(emotion),
         signal: ctrl.signal,
+        timing: ttsTiming,
       });
       for await (const buf of it) {
         if (signal && signal.aborted) break;
@@ -134,7 +140,10 @@ async function runTurn(opts) {
         firstMs: firstChunkMs,
         totalMs: Date.now() - tStart,
         ms: Math.round(bytes / 48),
+        api: ttsTiming.firstDataAt ? ttsTiming.firstDataAt - ttsTiming.requestAt : null,
+        ttfb: ttsTiming.ttfbAt ? ttsTiming.ttfbAt - ttsTiming.requestAt : null,
       });
+      if (seqNo === 0 && !firstTtsTiming.requestAt) Object.assign(firstTtsTiming, ttsTiming);
     } catch (e) {
       if (!(signal && signal.aborted)) {
         send('warn', { message: `TTS: ${e.message}` });
@@ -147,7 +156,9 @@ async function runTurn(opts) {
   }
 
   async function enqueueSentence(raw) {
+    const cpu0 = process.hrtime.bigint();
     const clean = speakable(raw);
+    speakCpuMs += Number(process.hrtime.bigint() - cpu0) / 1e6;
     if (!clean) return;
     full += raw;
     send('delta', { text: raw });
@@ -176,6 +187,7 @@ async function runTurn(opts) {
     messages,
     persona: (prompt && prompt.system) || undefined,
     signal,
+    timing: llmTiming,
   })) {
     if (signal && signal.aborted) break;
 
@@ -193,7 +205,9 @@ async function runTurn(opts) {
     bodyStarted = true;
     pending += ev.delta;
 
+    const cpu1 = process.hrtime.bigint();
     const { sentences, rest } = splitSentences(pending, false, !firstEmitted);
+    splitCpuMs += Number(process.hrtime.bigint() - cpu1) / 1e6;
     pending = rest;
     for (const s of sentences) {
       await enqueueSentence(s);
@@ -223,6 +237,10 @@ async function runTurn(opts) {
       firstTokenMs,
       firstAudioMs,
       llmDoneMs,
+      llmTiming,
+      firstTtsTiming,
+      t0,
+      localCpu: { split: Math.round(splitCpuMs * 10) / 10, speak: Math.round(speakCpuMs * 10) / 10 },
       totalMs,
       audioMs: Math.round(audioBytes / 48), // 24kHz * 2 字节 = 48 字节/毫秒
     },

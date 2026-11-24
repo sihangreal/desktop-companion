@@ -949,6 +949,33 @@ async function chatTurnV2(userText) {
     logger.log(
       `对话完成(v2) 首token ${r.timings.firstTokenMs}ms llm完 ${r.timings.llmDoneMs}ms 首声 ${r.timings.firstAudioMs}ms 合成完 ${r.timings.totalMs}ms 音频 ${r.timings.audioMs}ms 情绪 ${r.emotion} 字数 ${r.speakText.length}`
     );
+
+    // 拆分：接口耗时（网络 + 服务端） vs 本地耗时（我们的代码）
+    const T = r.timings;
+    const span = (t) =>
+      t && t.requestAt && t.firstDataAt
+        ? {
+            net: (t.ttfbAt || t.firstDataAt) - t.requestAt,
+            gen: t.firstDataAt - (t.ttfbAt || t.firstDataAt),
+            api: t.firstDataAt - t.requestAt,
+          }
+        : { net: 0, gen: 0, api: 0 };
+    const splitLlm = span(T.llmTiming);
+    const splitTts = span(T.firstTtsTiming);
+    const apiTotal = splitLlm.api + splitTts.api;
+    const localTotal = Math.max(0, T.firstAudioMs - apiTotal);
+    logger.log(
+      `耗时拆分 首声${T.firstAudioMs}ms = LLM接口${splitLlm.api}(网络${splitLlm.net}+生成${splitLlm.gen}) + TTS接口${splitTts.api}(网络${splitTts.net}+首包${splitTts.gen}) + 本地${localTotal}ms`
+    );
+    if (T.t0 && T.llmTiming.requestAt && T.firstTtsTiming.requestAt && T.firstTtsTiming.firstDataAt) {
+      const prep = T.llmTiming.requestAt - T.t0;
+      const split = T.firstTtsTiming.requestAt - (T.llmTiming.firstDataAt || T.llmTiming.requestAt);
+      const tail = T.firstTtsTiming.firstDataAt - T.firstTtsTiming.requestAt;
+      const cpu = T.localCpu || { split: 0, speak: 0 };
+      logger.log(
+        `本地拆解 准备${prep}ms + 等句子${split}ms（其中分句CPU ${cpu.split}ms/清洗CPU ${cpu.speak}ms） + TTS等待${tail}ms`
+      );
+    }
     send('done', { emotion: r.emotion, totalMs: r.timings.totalMs, text: r.text });
 
     // 记忆任务：异步，不阻塞本轮（FR-316、T-410）

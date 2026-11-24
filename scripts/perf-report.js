@@ -58,6 +58,19 @@ const segAudio = nums(/合成=\d+ms 音频=(\d+)ms/);
 
 const asrMs = nums(/\[bench\] asr #\d+ (\d+)ms/);
 
+// 接口 vs 程序 拆分
+const splitLlmApi = nums(/耗时拆分 首声\d+ms = LLM接口(\d+)/);
+const splitLlmNet = nums(/LLM接口\d+\(网络(\d+)\+/);
+const splitLlmGen = nums(/LLM接口\d+\(网络\d+\+生成(\d+)\)/);
+const splitTtsApi = nums(/\+ TTS接口(\d+)\(/);
+const splitTtsNet = nums(/TTS接口\d+\(网络(\d+)\+/);
+const splitTtsGen = nums(/TTS接口\d+\(网络\d+\+首包(\d+)\)/);
+const splitLocal = nums(/\+ 本地(\d+)ms/);
+const localPrep = nums(/本地拆解 准备(\d+)ms/);
+const localWait = nums(/准备\d+ms \+ 等句子(\d+)ms/);
+const cpuSplit = nums(/分句CPU ([\d.]+)ms/);
+const cpuSpeak = nums(/清洗CPU ([\d.]+)ms/);
+
 const S = {
   firstToken: stat(firstToken),
   llmDone: stat(llmDone),
@@ -68,6 +81,17 @@ const S = {
   segSynth: stat(segSynth),
   segAudio: stat(segAudio),
   asr: stat(asrMs),
+  splitLlmApi: stat(splitLlmApi),
+  splitLlmNet: stat(splitLlmNet),
+  splitLlmGen: stat(splitLlmGen),
+  splitTtsApi: stat(splitTtsApi),
+  splitTtsNet: stat(splitTtsNet),
+  splitTtsGen: stat(splitTtsGen),
+  splitLocal: stat(splitLocal),
+  localPrep: stat(localPrep),
+  localWait: stat(localWait),
+  cpuSplit: stat(cpuSplit),
+  cpuSpeak: stat(cpuSpeak),
 };
 
 // 首声 = 首 token + (等首句 + TTS 首包)
@@ -142,7 +166,25 @@ md.push(
   `- TTS 合成耗时是音频时长的 **${ratioAvg.toFixed(2)} 倍**，即合成速度约为播放的 **${ratioSpeed.toFixed(1)} 倍**（>1 才不会断档）`
 );
 md.push('');
-md.push('## 3. TTS 分段明细');
+md.push('## 3. 程序自身开销 vs 接口耗时');
+md.push('');
+md.push('| 归属 | 环节 | P50 | P90 | 说明 |');
+md.push('|---|---|---|---|---|');
+md.push(`| **我们的程序** | 准备（拼 prompt + IPC） | ${S.localPrep.p50}ms | ${S.localPrep.p90}ms | 几乎为 0 |`);
+md.push(`| **我们的程序** | 分句 CPU | ${S.cpuSplit.p50}ms | ${S.cpuSplit.p90}ms | 纯本地计算 |`);
+md.push(`| **我们的程序** | 文本清洗 CPU | ${S.cpuSpeak.p50}ms | ${S.cpuSpeak.p90}ms | 去 Markdown/emoji |`);
+md.push(`| 等接口 | 等 LLM 吐出足够成句的文本 | ${S.localWait.p50}ms | ${S.localWait.p90}ms | 不是我们的 CPU，是在等分片 |`);
+md.push(`| **接口** | LLM 网络（TTFB） | ${S.splitLlmNet.p50}ms | ${S.splitLlmNet.p90}ms | 建连 + 排队 |`);
+md.push(`| **接口** | LLM 生成 | ${S.splitLlmGen.p50}ms | ${S.splitLlmGen.p90}ms | 模型推理 |`);
+md.push(`| **接口** | TTS 网络（TTFB） | ${S.splitTtsNet.p50}ms | ${S.splitTtsNet.p90}ms | 建连 + 排队，波动大 |`);
+md.push(`| **接口** | TTS 首包生成 | ${S.splitTtsGen.p50}ms | ${S.splitTtsGen.p90}ms | 语音合成 |`);
+md.push('');
+const selfCpu = S.localPrep.p50 + S.cpuSplit.p50 + S.cpuSpeak.p50;
+md.push(
+  `**结论：我们程序自身的 CPU 开销 ${selfCpu < 0.5 ? '不足 0.5ms' : `约 ${selfCpu.toFixed(1)}ms`}，占首声的 ${((selfCpu / Math.max(1, S.firstSound.p50)) * 100).toFixed(2)}%。其余全是接口等待（含等 LLM 吐出足够成句的文本 ${S.localWait.p50}ms）。**`
+);
+md.push('');
+md.push('## 4. TTS 分段明细');
 md.push('');
 md.push('| 指标 | 样本 | P50 | P90 | 范围 | 均值 |');
 md.push('|---|---|---|---|---|---|');
@@ -150,7 +192,7 @@ md.push(row('分段首包', S.segFirst));
 md.push(row('分段合成总时长', S.segSynth));
 md.push(row('分段音频时长', S.segAudio));
 md.push('');
-md.push('## 4. 完整链路估算（P50）');
+md.push('## 5. 完整链路估算（P50）');
 md.push('');
 md.push('> 对话测试是直接喂文本，**不含 VAD 与 ASR**；下表把这两段按实测值补上。');
 md.push('');
@@ -168,7 +210,7 @@ for (const [name, ms] of [
 md.push(`${'首声'.padEnd(14)}  ${String(acc).padStart(5)}ms（从用户说完算起）`);
 md.push('```');
 md.push('');
-md.push('## 5. 结论');
+md.push('## 6. 结论');
 md.push('');
 md.push(
   `1. 最大头是 **${biggest[0][0]}（${biggest[0][1]}ms）**，其次 ${biggest[1][0]}（${biggest[1][1]}ms）、${biggest[2][0]}（${biggest[2][1]}ms）。`
