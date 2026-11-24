@@ -17,3 +17,7 @@ frames/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# 内置示例视频与自定义装扮（体积大 / 第三方素材，不进 git）
+assets/default-look/
+assets/looks/
