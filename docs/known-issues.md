@@ -17,7 +17,7 @@
 
 窗口内容区为空白（白色），`setup` 闭包内的日志一行都没写入。
 
-截图：`docs/assets/webview2-crash.png`
+截图：`docs/assets/webview2-crash.jpg`
 
 ### 证据
 

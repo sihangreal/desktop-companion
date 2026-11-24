@@ -80,7 +80,7 @@ sequenceDiagram
 
 ## 3. UML 类图
 
-![UML 类图](assets/v2-class.png)
+![UML 类图](assets/v2-class.jpg)
 
 ```mermaid
 classDiagram
